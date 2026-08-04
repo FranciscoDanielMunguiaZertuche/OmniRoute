@@ -88,11 +88,42 @@ import {
 } from "./combo/promptCacheAffinity.ts";
 import type { CompressionMode } from "./compression/types.ts";
 import { getCachedProviderConnections } from "../../src/lib/db/readCache";
+import { runWithProxyContext } from "../utils/proxyFetch.ts";
+import { resolveConnectionProxy, type ConnectionProxyConfig } from "../utils/perConnectionProxy.ts";
+
+/**
+ * Wrap `fn()` in `runWithProxyContext()` when `proxyConfig` is non-null so the
+ * per-account SOCKS5/HTTP proxy in `provider_specific_data.proxy_url` applies
+ * to the executor's outbound fetch. When no proxy is configured for the target
+ * (most providers), `runWithProxyContext` is skipped entirely so global
+ * `HTTPS_PROXY` / direct fallback paths are unaffected.
+ *
+ * Per-account proxy is the mechanism that lets each NVIDIA NIM account egress
+ * through a different WireGuard/Gluetun tunnel: store
+ * `{"proxy_url":"socks5://gluetun-nvidia-N:8888"}` in the connection's
+ * `provider_specific_data`, and the combo engine picks it up here.
+ */
+async function runTargetWithProxy<T>(
+  proxyConfig: ConnectionProxyConfig | null,
+  fn: () => Promise<T>
+): Promise<T> {
+  if (!proxyConfig) return fn();
+  return runWithProxyContext(proxyConfig, fn);
+}
 import {
   isProviderInCooldown,
   recordProviderCooldown,
+  clearCooldownState,
   recordProviderSuccess,
 } from "./providerCooldownTracker.ts";
+// PATCHED 2026-07-14: per-key fixed backoff for combo routing
+import {
+  recordKeyBackoff,
+  recordKeySuccess,
+  isKeyAvailable,
+  getBackoffState,
+  getDefaultBackoffMs,
+} from "./perKeyBackoff.ts";
 import {
   resolveResilienceSettings,
   type ResilienceSettings,
@@ -686,10 +717,10 @@ export async function handleComboChat({
     });
   }
 
-  const maxRetries = config.maxRetries ?? 1;
+  const maxRetries = config.maxRetries ?? 999999;
   const retryDelayMs = resolveDelayMs(config.retryDelayMs, 2000);
   const fallbackDelayMs = resolveDelayMs(config.fallbackDelayMs, 0);
-  const maxSetRetries = config.maxSetRetries ?? 0;
+  const maxSetRetries = config.maxSetRetries ?? 999999;
   const setRetryDelayMs = resolveDelayMs(config.setRetryDelayMs, 2000);
 
   const targetResolution = await resolveComboTargetPipeline({
@@ -712,6 +743,259 @@ export async function handleComboChat({
   const { stickyWeightedLimit, getWeightedStepKeyForTarget, preScreenMap } = targetResolution;
   const _sticky = targetResolution.sticky;
   let orderedTargets = targetResolution.orderedTargets;
+    ) {
+      return false;
+    }
+    if (
+      target.provider &&
+      rawModel &&
+      isModelLocked(target.provider, target.connectionId || "", rawModel)
+    ) {
+      return false;
+    }
+    return isModelAvailable ? await isModelAvailable(target.modelStr, target) : true;
+  };
+
+  // #2562: Expand provider-wildcard steps (e.g. `fta/*`, `openai/gpt-4*`) into
+  // concrete model entries sourced from the live synced-models catalog + registry.
+  // Must run before any step-group / target resolution so that wildcard-originated
+  // steps are treated identically to hand-authored entries by all downstream logic
+  // (including the sticky-weighted eligibility pass below).
+  const expandedCombo = await expandProviderWildcardsInCombo(combo);
+  const expandedAllCombos = allCombos
+    ? Array.isArray(allCombos)
+      ? await expandProviderWildcardsInCollection(allCombos as ComboLike[])
+      : {
+          ...allCombos,
+          combos: await expandProviderWildcardsInCollection(
+            ((allCombos as { combos?: ComboLike[] }).combos || []) as ComboLike[]
+          ),
+        }
+    : allCombos;
+
+  const stickyWeightedLimit = clampStickyWeightedTargetLimit(
+    (config as Record<string, unknown>).stickyWeightedLimit
+  );
+  if (
+    strategy === "weighted" &&
+    !weightedStickyTargets.has(combo.name) &&
+    weightedStickyTargets.size >= MAX_RR_COUNTERS
+  ) {
+    const oldest = weightedStickyTargets.keys().next().value;
+    if (oldest !== undefined) weightedStickyTargets.delete(oldest);
+  }
+  let stepGroups: Array<{ step: ComboRuntimeStep; targets: ResolvedComboTarget[] }> | undefined;
+  const weightedEligibleKeys = new Set<string>();
+  if (strategy === "weighted") {
+    stepGroups = resolveWeightedStepGroups(expandedCombo, expandedAllCombos);
+    for (const group of stepGroups) {
+      const availability = await Promise.all(group.targets.map(isTargetSelectableForWeighted));
+      if (availability.some(Boolean)) weightedEligibleKeys.add(group.step.executionKey);
+    }
+  }
+  const rawStickyWeightedKey =
+    strategy === "weighted" ? getStickyWeightedExecutionKey(combo.name, stickyWeightedLimit) : null;
+  const stickyWeightedKey =
+    rawStickyWeightedKey && weightedEligibleKeys.has(rawStickyWeightedKey)
+      ? rawStickyWeightedKey
+      : null;
+  if (strategy !== "weighted" || stickyWeightedLimit <= 1) {
+    weightedStickyTargets.delete(combo.name);
+  } else if (rawStickyWeightedKey && !stickyWeightedKey) {
+    weightedStickyTargets.delete(combo.name);
+  }
+  const weightedResolution =
+    strategy === "weighted"
+      ? resolveWeightedTargets(
+          expandedCombo,
+          expandedAllCombos,
+          stickyWeightedKey,
+          weightedEligibleKeys,
+          stepGroups
+        )
+      : null;
+  const getWeightedStepKeyForTarget = (target: ResolvedComboTarget): string | null => {
+    if (!weightedResolution?.orderedSteps) return null;
+    const step = weightedResolution.orderedSteps.find(
+      (entry) =>
+        target.executionKey === entry.executionKey ||
+        target.executionKey.startsWith(entry.executionKey + ">")
+    );
+    return step?.executionKey || null;
+  };
+  let orderedTargets =
+    strategy === "weighted"
+      ? weightedResolution?.orderedTargets || []
+      : resolveComboTargets(
+          expandedCombo,
+          expandedAllCombos,
+          clampComboDepth(config.maxComboDepth)
+        );
+
+  orderedTargets = await applyRequestTagRouting(orderedTargets, body, log);
+
+  if (strategy === "weighted") {
+    log.info(
+      "COMBO",
+      `Weighted selection${stickyWeightedKey ? " (sticky)" : ""}${allCombos ? " with nested resolution" : ""}: ${orderedTargets.length} total targets`
+    );
+  } else if (allCombos) {
+    log.info("COMBO", `${strategy} with nested resolution: ${orderedTargets.length} total targets`);
+  }
+
+  // Pipeline dispatch: route smart/pipeline-enabled combos through the multi-stage pipeline
+  if (strategy === "auto") {
+    const autoParsed = parseAutoPrefix(combo.name);
+    const autoVariant = autoParsed.valid ? autoParsed.variant : undefined;
+    if (autoVariant === "smart" || config.pipeline_enabled) {
+      try {
+        const pipelineRaw = await handlePipelineCombo({
+          body,
+          combo,
+          handleChatCore: handleSingleModelWithTimeout,
+          log: {
+            info: log.info,
+            warn: log.warn,
+            error: log.error ?? log.warn,
+          },
+          settings: settings ?? {},
+          signal: signal ?? undefined,
+        });
+        // handlePipelineCombo resolves to a PipelineResult (buffered text) or,
+        // in the streaming-final-stage case, a Response. Callers downstream
+        // (chat.ts → withSessionHeader) require a Response, so adapt the
+        // PipelineResult here instead of leaking the raw object.
+        return pipelineRaw instanceof Response
+          ? pipelineRaw
+          : buildPipelineResponse(pipelineRaw, body);
+      } catch (pipelineErr) {
+        const pipelineMsg = pipelineErr instanceof Error ? pipelineErr.message : "";
+        if (pipelineMsg === "PIPELINE_DISABLED") {
+          log.info("COMBO", "Pipeline disabled, falling through to standard auto routing");
+        } else if (pipelineMsg === "PIPELINE_TOKEN_THRESHOLD") {
+          log.info(
+            "COMBO",
+            "Pipeline skipped (prompt below token threshold), falling through to standard auto routing"
+          );
+        } else {
+          log.warn("COMBO", "Pipeline dispatch failed, falling through to standard auto routing", {
+            err: pipelineErr,
+          });
+        }
+      }
+    }
+  }
+
+  // #4945 regression guard: when an "auto" combo uses an EXPLICIT router
+  // (routingStrategy lkgp/cost/etc, not the default "rules" scorer), that router
+  // pins orderedTargets[0]. The task-aware reordering below must then refine only
+  // the fallback order, never override the router's primary choice.
+  let autoUsedExplicitRouter = false;
+  if (strategy === "auto") {
+    const autoResult = await resolveAutoStrategyOrder({
+      orderedTargets,
+      body,
+      combo,
+      settings,
+      config,
+      relayOptions,
+      resilienceSettings,
+      log,
+      buildAutoCandidates,
+    });
+    if ("earlyResponse" in autoResult) return autoResult.earlyResponse;
+    orderedTargets = autoResult.orderedTargets;
+    autoUsedExplicitRouter = autoResult.autoUsedExplicitRouter;
+  } else {
+    orderedTargets = await applyStrategyOrdering(strategy, orderedTargets, {
+      combo,
+      config,
+      body,
+      log,
+      apiKeyAllowedConnections,
+    });
+  }
+  // #6168: session stickiness opt-out. Per-combo `config.disableSessionStickiness`
+  // overrides the global `settings.disableSessionStickiness` fallback (default false,
+  // preserving the #3825 prompt-cache/504 fix). When disabled, skip the reorder and
+  // treat the result as a no-op so the recordStickyBinding write-back below is skipped.
+  const disableSessionStickiness = resolveDisableSessionStickiness(
+    config as Record<string, unknown> | null | undefined,
+    settings as Record<string, unknown> | null | undefined
+  );
+  const _sticky = disableSessionStickiness
+    ? ({ targets: orderedTargets, messageHash: null, stuck: false } as const)
+    : await applySessionStickiness(
+        orderedTargets,
+        body.messages as Array<{ role?: string; content?: unknown }>
+      );
+  orderedTargets = _sticky.targets;
+  orderedTargets = orderTargetsByEvalScores(orderedTargets, config.evalRouting, log);
+  orderedTargets = filterTargetsByRequestCompatibility(orderedTargets, body, log);
+
+  // PATCHED 2026-07-14: filter out targets whose backing API key is in fixed
+  // per-key backoff. NVIDIA rate-limits each key independently (verified
+  // 2026-07-14: keys 1/4 vs 2/3 returned different status simultaneously
+  // through separate WireGuard egress). Without this filter, the combo
+  // re-fires the same throttled key and refreshes NVIDIA's rolling
+  // window. Initial backoff: 60s, fixed (not exponential) so we can
+  // observe NVIDIA's true reset window.
+  //
+  // Edge case: if ALL targets get filtered, the combo's normal exhaustion
+  // path will pause + retry, and on the next iteration any key whose
+  // backoff has expired (>= 60s since last 429) will be re-included.
+  orderedTargets = orderedTargets.filter((t) => {
+    if (!t.connectionId) return true;
+    if (isKeyAvailable(t.connectionId)) return true;
+    log.info(
+      "COMBO",
+      `Skipping ${t.provider ?? t.providerId ?? "?"}/${t.modelStr ?? t.model ?? "?"} — connection ${t.connectionId} in fixed backoff (${getDefaultBackoffMs()}ms)`
+    );
+    return false;
+  });
+  if (orderedTargets.length === 0) {
+    log.warn(
+      "COMBO",
+      `All targets filtered by per-key backoff — combo will wait for earliest backoff to expire`
+    );
+  }
+
+  // Task-aware reordering: only active for strategies ["smart","task","task-aware","task_aware","auto"].
+  // Additive — does not affect any of the other 15 strategies.
+  if (isTaskRoutingStrategy(strategy)) {
+    const task = classifyTask(body);
+    const conversationCacheKey = getConversationCacheKey(body);
+    const taskReordered = reorderByTaskWeight(orderedTargets, task);
+    // #4945 regression guard: when an explicit auto router (lkgp/cost/…) pinned
+    // orderedTargets[0], keep that primary choice and let task-aware refine only
+    // the fallback tail — otherwise task weighting silently defeats the operator's
+    // chosen LKGP/cost selection. reorderByTaskWeight returns the same target
+    // objects (no clone), so identity filtering is safe.
+    const pinnedFirst = autoUsedExplicitRouter ? orderedTargets[0] : undefined;
+    const nextOrder = pinnedFirst
+      ? [pinnedFirst, ...taskReordered.filter((t) => t !== pinnedFirst)]
+      : taskReordered;
+    if (nextOrder[0]?.modelStr !== orderedTargets[0]?.modelStr) {
+      const reasons =
+        Array.isArray(task.reasons) && task.reasons.length > 0
+          ? ` (${task.reasons.join(",")})`
+          : "";
+      log.info(
+        "COMBO",
+        `task-route task=${task.level}${reasons} cacheKey=${conversationCacheKey ?? "none"} → ${nextOrder[0]?.modelStr}`
+      );
+    }
+    orderedTargets = nextOrder;
+  }
+
+  // Parallel pre-screen: check provider profiles and model availability for all targets
+  // Only runs for priority strategy where sequential checking causes latency
+  const preScreenMap =
+    strategy === "priority"
+      ? await preScreenTargets(orderedTargets, isModelAvailable).catch(
+          () => new Map<string, PreScreenResult>()
+        )
+      : new Map<string, PreScreenResult>();
 
   // #5923 (Finding #4) — reset-window config for the shared per-target quota-
   // exhaustion cutoff below. The "auto" strategy already applies its own cutoff
@@ -1168,11 +1452,82 @@ export async function handleComboChat({
               }
             }
           }
-          const result = await handleSingleModelWithTimeout(attemptBody, modelStr, {
-            ...targetForAttempt,
-            effectiveComboStrategy: strategy,
-            failoverBeforeRetry: config.failoverBeforeRetry,
-          });
+          const targetConnection = target.connectionId
+            ? connectionById.get(target.connectionId)
+            : undefined;
+          const targetProxyConfig = resolveConnectionProxy(targetConnection);
+          // #5297 fix: per-target retry-on-empty. Some upstreams (notably
+          // GLM 5.2 on NVIDIA NIM) emit a streaming response with a terminal
+          // `finish_reason: "stop"` but zero content/tool_calls/reasoning. The
+          // validateResponseQuality check now flags this as invalid; rather
+          // than immediately failing over to the next target (which is the
+          // SAME model on a different NVIDIA key — pointless, since the empty
+          // turn is a model-level behavior, not an account-level one), we
+          // retry the same target up to EMPTY_RESPONSE_MAX_RETRIES times with
+          // exponential backoff. If still empty, fall through normally so the
+          // combo loop can try a different model.
+          const EMPTY_RESPONSE_MAX_RETRIES = 3;
+          let result: Response | null = null;
+          let emptyRetryCount = 0;
+          let emptyReason = "";
+          for (let emptyAttempt = 0; emptyAttempt <= EMPTY_RESPONSE_MAX_RETRIES; emptyAttempt++) {
+            const attemptResult = await runTargetWithProxy(targetProxyConfig, () =>
+              handleSingleModelWithTimeout(attemptBody, modelStr, {
+                ...targetForAttempt,
+                effectiveComboStrategy: strategy,
+                failoverBeforeRetry: config.failoverBeforeRetry,
+              })
+            );
+
+            // HTTP-level failure (network, 5xx, etc.) — bubble up immediately,
+            // no point retrying on the same target for a transient connection error.
+            if (!attemptResult.ok) {
+              result = attemptResult;
+              break;
+            }
+
+            // Quick quality peek — only catch the OpenAI-style "empty stop" pattern.
+            // Full validateResponseQuality runs after the retry loop so we don't
+            // double-buffer the body for legitimate responses.
+            let quickReason = "";
+            try {
+              const peekClone = attemptResult.clone();
+              const quickQuality = await validateResponseQuality(
+                peekClone,
+                clientRequestedStream,
+                log,
+                config.responseValidation
+              );
+              releaseQualityClone(peekClone, attemptResult, quickQuality);
+              if (quickQuality.valid) {
+                // Not empty — proceed with the full validation below.
+                result = attemptResult;
+                break;
+              }
+              quickReason = quickQuality.reason || "unknown";
+            } catch {
+              // Quality check threw — treat as non-empty and let the full check decide.
+              result = attemptResult;
+              break;
+            }
+
+            // Empty response — record and retry if budget remains.
+            emptyRetryCount = emptyAttempt + 1;
+            emptyReason = quickReason;
+            log.warn(
+              "COMBO",
+              `Empty-response retry ${emptyRetryCount}/${EMPTY_RESPONSE_MAX_RETRIES} on ${modelStr} (${target.connectionId?.slice(0, 8) || "?"}) — reason=${quickReason}`
+            );
+            if (emptyAttempt >= EMPTY_RESPONSE_MAX_RETRIES) {
+              // Out of retries — return the last response so the existing
+              // quality-rejected path runs (records failure, falls through).
+              result = attemptResult;
+              break;
+            }
+            // Exponential backoff before retry: 500ms, 1s, 2s (capped).
+            const backoffMs = Math.min(2000, 500 * Math.pow(2, emptyAttempt));
+            await new Promise((r) => setTimeout(r, backoffMs));
+          }
 
           // Success — validate response quality before returning
           if (result.ok) {
@@ -1290,6 +1645,10 @@ export async function handleComboChat({
             // Reset cooldown on success
             if (provider && provider !== "unknown") {
               recordProviderSuccess(provider, effectiveConnectionId || undefined);
+            }
+            // PATCHED 2026-07-14: clear per-key fixed backoff on success
+            if (effectiveConnectionId) {
+              recordKeySuccess(effectiveConnectionId);
             }
             if (strategy === "weighted" && stickyWeightedLimit > 1) {
               const stickySuccessKey = getWeightedStepKeyForTarget(target);
@@ -2000,24 +2359,40 @@ export async function handleComboChat({
       // Retry the entire set if more attempts remain
       if (setTry < maxSetRetries) continue;
 
-      // All set retries exhausted — return the final error
-      if (!lastStatus) {
-        notifyWebhookEvent("request.failed", {
-          combo: combo.name,
-          reason: "ALL_ACCOUNTS_INACTIVE",
-          latencyMs,
-          fallbackCount,
-        });
-        // Silent-stop fix: bump the failure counter so the session pin clears on the 3rd
-        // consecutive all-inactive cascade; buildRecoveryHint emits `switch-combo` with a
-        // next-step that points the user at /dashboard/providers.
-        recordComboFailure(effectiveSessionId, combo.name);
-        return errorResponseWithComboDiagnostics(
-          503,
-          "Service temporarily unavailable: all upstream accounts are inactive",
-          buildComboDiag("all_accounts_inactive"),
-          { code: "ALL_ACCOUNTS_INACTIVE", type: "service_unavailable" }
+      if (
+        !lastStatus ||
+        lastStatus === 429 ||
+        (typeof lastStatus === "number" && lastStatus >= 500)
+      ) {
+        // PATCHED 2026-07-14: recurse on 429/5xx instead of returning ALL_ACCOUNTS_INACTIVE.
+        //
+        // PATCHED 2026-07-14 (safety net): if we've been in this loop for >5min
+        // continuously, reset in-memory provider cooldowns so the next iteration
+        // actually attempts upstream instead of bouncing off stuck entries.
+        const comboRecord = combo as unknown as Record<string, unknown>;
+        const exhaustedStart = comboRecord.__exhaustedStartMs as number | undefined;
+        if (exhaustedStart === undefined) {
+          comboRecord.__exhaustedStartMs = Date.now();
+        } else if (Date.now() - exhaustedStart > 5 * 60 * 1000) {
+          log.warn(
+            "COMBO",
+            `Quota-share combo exhausted for >5min — resetting in-memory provider cooldowns`
+          );
+          try {
+            clearCooldownState();
+          } catch {
+            // best-effort
+          }
+          comboRecord.__exhaustedStartMs = Date.now();
+        }
+        log.warn(
+          "COMBO",
+          `All quota-share targets exhausted status=${lastStatus} — waiting 5s then retrying infinite`
         );
+        await new Promise((r) => setTimeout(r, 5000));
+        return dispatchWithCooldownRetry();
+      } else {
+        (combo as unknown as Record<string, unknown>).__exhaustedStartMs = undefined;
       }
 
       const status = lastStatus;
@@ -2190,7 +2565,7 @@ async function handleRoundRobinCombo({
   // #3872: pre-cascade queue depth — lower values fail over to the next combo member
   // sooner under concurrency saturation (0 = never queue). Default 20 (backward-compat).
   const queueDepth = resolveComboQueueDepth(config);
-  const maxRetries = config.maxRetries ?? 1;
+  const maxRetries = config.maxRetries ?? 999999;
   const retryDelayMs = resolveDelayMs(config.retryDelayMs, 2000);
   const fallbackDelayMs = resolveDelayMs(config.fallbackDelayMs, 0);
   const reasoningTokenBufferEnabled = config.reasoningTokenBufferEnabled !== false;
@@ -2561,11 +2936,64 @@ async function handleRoundRobinCombo({
           }
         }
 
-        const result = await handleSingleModel(attemptBody, modelStr, {
-          ...targetForAttempt,
-          effectiveComboStrategy: "round-robin",
-          failoverBeforeRetry: config.failoverBeforeRetry,
-        });
+        const rrTargetConnection = target.connectionId
+          ? connectionById.get(target.connectionId)
+          : undefined;
+        const rrProxyConfig = resolveConnectionProxy(rrTargetConnection);
+        // #5297 fix: per-target retry-on-empty in the RR path too. Same
+        // rationale as the handleComboChat loop above — GLM 5.2 (and similar)
+        // emit empty stops that should be retried on the same target before
+        // moving on. Retries the same RR slot (same account) since the empty
+        // turn is a model-level behavior, not account-level.
+        const EMPTY_RESPONSE_MAX_RETRIES = 3;
+        let result: Response | null = null;
+        let rrEmptyRetryCount = 0;
+        for (let emptyAttempt = 0; emptyAttempt <= EMPTY_RESPONSE_MAX_RETRIES; emptyAttempt++) {
+          const attemptResult = await runTargetWithProxy(rrProxyConfig, () =>
+            handleSingleModel(attemptBody, modelStr, {
+              ...targetForAttempt,
+              effectiveComboStrategy: "round-robin",
+              failoverBeforeRetry: config.failoverBeforeRetry,
+            })
+          );
+
+          if (!attemptResult.ok) {
+            result = attemptResult;
+            break;
+          }
+
+          let quickReason = "";
+          try {
+            const peekClone = attemptResult.clone();
+            const quickQuality = await validateResponseQuality(
+              peekClone,
+              clientRequestedStream,
+              log,
+              config.responseValidation
+            );
+            releaseQualityClone(peekClone, attemptResult, quickQuality);
+            if (quickQuality.valid) {
+              result = attemptResult;
+              break;
+            }
+            quickReason = quickQuality.reason || "unknown";
+          } catch {
+            result = attemptResult;
+            break;
+          }
+
+          rrEmptyRetryCount = emptyAttempt + 1;
+          log.warn(
+            "COMBO-RR",
+            `Empty-response retry ${rrEmptyRetryCount}/${EMPTY_RESPONSE_MAX_RETRIES} on ${modelStr} (${target.connectionId?.slice(0, 8) || "?"}) — reason=${quickReason}`
+          );
+          if (emptyAttempt >= EMPTY_RESPONSE_MAX_RETRIES) {
+            result = attemptResult;
+            break;
+          }
+          const backoffMs = Math.min(2000, 500 * Math.pow(2, emptyAttempt));
+          await new Promise((r) => setTimeout(r, backoffMs));
+        }
 
         // Success — validate response quality before returning
         if (result.ok) {
@@ -2857,6 +3285,43 @@ async function handleRoundRobinCombo({
           !isTokenLimitBreach &&
           [408, 429, 500, 502, 503, 504].includes(result.status);
         if (retry < maxRetries && isTransient && !providerExhausted) {
+          // If we have more targets remaining in the round-robin AND another target
+          // uses a DIFFERENT connection, advance to it immediately instead of
+          // retrying the same cooled-down connection. Retrying a rate-limited
+          // connection just wastes time and trips the same cooldown again.
+          const remainingTargets = orderedTargets.length - offset - 1;
+          const hasAlternativeConnection = orderedTargets
+            .slice(offset + 1)
+            .some((t) => t.connectionId && t.connectionId !== targetWithConnection.connectionId);
+          if (
+            remainingTargets > 0 &&
+            hasAlternativeConnection &&
+            (result.status === 429 ||
+              result.status === 502 ||
+              result.status === 503 ||
+              result.status === 504 ||
+              result.status === 500 ||
+              result.status === 408)
+          ) {
+            // PATCHED 2026-07-14: record per-key fixed backoff. Without this,
+            // the combo would re-fire the same throttled key on the next
+            // iteration (within the same combo request) and refresh NVIDIA's
+            // rolling window. With backoff, the next iteration of THIS combo
+            // request also skips this key. Future combo requests (after the
+            // 1-3s combo retry loop) will retry it once the backoff expires.
+            if (targetWithConnection.connectionId) {
+              recordKeyBackoff(targetWithConnection.connectionId);
+              log.info(
+                "COMBO-RR",
+                `${modelStr} connection ${targetWithConnection.connectionId} → ${getDefaultBackoffMs()}ms fixed backoff (status ${result.status})`
+              );
+            }
+            log.info(
+              "COMBO-RR",
+              `${modelStr} transient ${result.status}, advancing to next target (no more retries on same)`
+            );
+            break;
+          }
           continue;
         }
 
@@ -2964,17 +3429,65 @@ async function handleRoundRobinCombo({
     });
   }
 
-  if (!lastStatus) {
-    return new Response(
-      JSON.stringify({
-        error: {
-          message: "Service temporarily unavailable: all upstream accounts are inactive",
-          type: "service_unavailable",
-          code: "ALL_ACCOUNTS_INACTIVE",
-        },
-      }),
-      { status: 503, headers: { "Content-Type": "application/json" } }
-    );
+  if (!lastStatus || lastStatus === 429 || (typeof lastStatus === "number" && lastStatus >= 500)) {
+    // PATCHED 2026-07-14: when all targets exhausted on transient errors (429/5xx) or
+    // when lastStatus is null, wait and recurse into handleRoundRobinCombo instead of
+    // returning a misleading ALL_ACCOUNTS_INACTIVE 503. NVIDIA's 429/503 RPM throttles
+    // last many minutes — returning to the client is the wrong default.
+    //
+    // PATCHED 2026-07-14 (safety net): if we've been in this "all exhausted" loop for
+    // more than 5 minutes continuously, the in-memory providerCooldownTracker may have
+    // stuck entries that don't reflect reality. Clear all cooldowns once so the next
+    // iteration actually attempts upstream.
+    const comboRecord = combo as unknown as Record<string, unknown>;
+    const exhaustedStart = comboRecord.__exhaustedStartMs as number | undefined;
+    if (exhaustedStart === undefined) {
+      comboRecord.__exhaustedStartMs = Date.now();
+    } else if (Date.now() - exhaustedStart > 5 * 60 * 1000) {
+      log.warn(
+        "COMBO-RR",
+        `Combo exhausted for >5min — resetting in-memory provider cooldowns and retrying`
+      );
+      try {
+        clearCooldownState();
+      } catch {
+        // best-effort
+      }
+      comboRecord.__exhaustedStartMs = Date.now();
+    }
+    // PATCHED 2026-07-16: wait until the EARLIEST per-key backoff expires (not a
+    // fixed 20 min). Per-key backoff timestamps are recorded independently, so
+    // when keys throttle at slightly different times (e.g., 16:07:56 vs 16:13:15),
+    // the earliest key is ready sooner. Capped at 20 min (the default backoff
+    // window) so we never wait longer than the original behavior. If state is
+    // empty (all keys cleared), wait 0 and recurse immediately.
+    const backoffState = getBackoffState();
+    const defaultBackoffMs = getDefaultBackoffMs();
+    let waitMs: number;
+    let waitReason: string;
+    if (backoffState.length === 0) {
+      waitMs = 0;
+      waitReason = "no per-key backoffs active, recursing immediately";
+    } else {
+      const earliestRemaining = Math.min(...backoffState.map((s) => s.remainingMs));
+      waitMs = Math.min(defaultBackoffMs, Math.max(0, earliestRemaining));
+      waitReason = `waiting until earliest per-key backoff expires (${backoffState.length} keys throttled, earliest in ${Math.ceil(waitMs / 1000)}s)`;
+    }
+    log.warn("COMBO-RR", `All RR targets exhausted status=${lastStatus} — ${waitReason}`);
+    await new Promise((r) => setTimeout(r, waitMs));
+    return handleRoundRobinCombo({
+      body,
+      combo,
+      handleSingleModel,
+      isModelAvailable,
+      log,
+      settings,
+      allCombos,
+      signal,
+    });
+  } else {
+    // Success path — clear the exhaustion timer
+    (combo as unknown as Record<string, unknown>).__exhaustedStartMs = undefined;
   }
 
   const status = lastStatus;
