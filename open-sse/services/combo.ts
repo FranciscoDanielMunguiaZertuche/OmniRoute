@@ -741,107 +741,53 @@ export async function handleComboChat({
   });
   if ("earlyResponse" in targetResolution) return targetResolution.earlyResponse;
   const { stickyWeightedLimit, getWeightedStepKeyForTarget, preScreenMap } = targetResolution;
-  const _sticky = targetResolution.sticky;
   let orderedTargets = targetResolution.orderedTargets;
-    ) {
-      return false;
-    }
-    if (
-      target.provider &&
-      rawModel &&
-      isModelLocked(target.provider, target.connectionId || "", rawModel)
-    ) {
-      return false;
-    }
-    return isModelAvailable ? await isModelAvailable(target.modelStr, target) : true;
-  };
 
-  // #2562: Expand provider-wildcard steps (e.g. `fta/*`, `openai/gpt-4*`) into
-  // concrete model entries sourced from the live synced-models catalog + registry.
-  // Must run before any step-group / target resolution so that wildcard-originated
-  // steps are treated identically to hand-authored entries by all downstream logic
-  // (including the sticky-weighted eligibility pass below).
-  const expandedCombo = await expandProviderWildcardsInCombo(combo);
-  const expandedAllCombos = allCombos
-    ? Array.isArray(allCombos)
-      ? await expandProviderWildcardsInCollection(allCombos as ComboLike[])
-      : {
-          ...allCombos,
-          combos: await expandProviderWildcardsInCollection(
-            ((allCombos as { combos?: ComboLike[] }).combos || []) as ComboLike[]
-          ),
-        }
-    : allCombos;
+  // #5923 (Finding #4) — reset-window config for the shared per-target quota-
+  // exhaustion cutoff below. The "auto" strategy already applies its own cutoff
+  // via buildAutoCandidates/routableCandidates, so this only affects the other
+  // 16 strategies (priority, weighted, etc.) that funnel through executeTarget.
+  const quotaCutoffResetWindowConfig = resolveResetWindowConfig(config as Record<string, unknown>);
 
-  const stickyWeightedLimit = clampStickyWeightedTargetLimit(
-    (config as Record<string, unknown>).stickyWeightedLimit
+  // QA P0 diagnostics: record the order in which targets were actually attempted
+  // (provider/model ids only) so a terminal combo failure can report the attempt
+  // sequence alongside pool size + exhaustion reasons. Accumulates across set retries.
+  const comboAttemptOrder: Array<{ provider: string; model: string }> = [];
+
+  if (orderedTargets.length === 0) {
+    // Surface a recovery hint + auto-clear the session pin after enough consecutive
+    // no-target failures (silent-stop fix). Threshold of 3 prevents a one-off account
+    // wipe from destroying the prompt-cache pin benefit on the next request.
+    recordComboFailure(effectiveSessionId, combo.name);
+    return errorResponseWithComboDiagnostics(
+      404,
+      "Combo has no executable targets",
+      {
+        poolSize: 0,
+        attempted: 0,
+        excluded: [],
+        attemptOrder: [],
+        terminalReason: "no_executable_targets",
+        recovery: buildRecoveryHint("no_executable_targets"),
+      },
+      { code: "model_not_found", type: "invalid_request_error" }
+    );
+  }
+
+  scheduleShadowRouting(
+    combo,
+    config,
+    body,
+    resolveShadowTargets(combo, config, allCombos),
+    handleSingleModel,
+    isModelAvailable,
+    strategy,
+    log
   );
-  if (
-    strategy === "weighted" &&
-    !weightedStickyTargets.has(combo.name) &&
-    weightedStickyTargets.size >= MAX_RR_COUNTERS
-  ) {
-    const oldest = weightedStickyTargets.keys().next().value;
-    if (oldest !== undefined) weightedStickyTargets.delete(oldest);
-  }
-  let stepGroups: Array<{ step: ComboRuntimeStep; targets: ResolvedComboTarget[] }> | undefined;
-  const weightedEligibleKeys = new Set<string>();
-  if (strategy === "weighted") {
-    stepGroups = resolveWeightedStepGroups(expandedCombo, expandedAllCombos);
-    for (const group of stepGroups) {
-      const availability = await Promise.all(group.targets.map(isTargetSelectableForWeighted));
-      if (availability.some(Boolean)) weightedEligibleKeys.add(group.step.executionKey);
-    }
-  }
-  const rawStickyWeightedKey =
-    strategy === "weighted" ? getStickyWeightedExecutionKey(combo.name, stickyWeightedLimit) : null;
-  const stickyWeightedKey =
-    rawStickyWeightedKey && weightedEligibleKeys.has(rawStickyWeightedKey)
-      ? rawStickyWeightedKey
-      : null;
-  if (strategy !== "weighted" || stickyWeightedLimit <= 1) {
-    weightedStickyTargets.delete(combo.name);
-  } else if (rawStickyWeightedKey && !stickyWeightedKey) {
-    weightedStickyTargets.delete(combo.name);
-  }
-  const weightedResolution =
-    strategy === "weighted"
-      ? resolveWeightedTargets(
-          expandedCombo,
-          expandedAllCombos,
-          stickyWeightedKey,
-          weightedEligibleKeys,
-          stepGroups
-        )
-      : null;
-  const getWeightedStepKeyForTarget = (target: ResolvedComboTarget): string | null => {
-    if (!weightedResolution?.orderedSteps) return null;
-    const step = weightedResolution.orderedSteps.find(
-      (entry) =>
-        target.executionKey === entry.executionKey ||
-        target.executionKey.startsWith(entry.executionKey + ">")
-    );
-    return step?.executionKey || null;
-  };
-  let orderedTargets =
-    strategy === "weighted"
-      ? weightedResolution?.orderedTargets || []
-      : resolveComboTargets(
-          expandedCombo,
-          expandedAllCombos,
-          clampComboDepth(config.maxComboDepth)
-        );
 
-  orderedTargets = await applyRequestTagRouting(orderedTargets, body, log);
-
-  if (strategy === "weighted") {
-    log.info(
-      "COMBO",
-      `Weighted selection${stickyWeightedKey ? " (sticky)" : ""}${allCombos ? " with nested resolution" : ""}: ${orderedTargets.length} total targets`
-    );
-  } else if (allCombos) {
-    log.info("COMBO", `${strategy} with nested resolution: ${orderedTargets.length} total targets`);
-  }
+  // G2: Collect execution keys registered by _registerExecutionCandidates above (auto strategy).
+  // We snapshot them now so cleanup can happen after the attempt loop finishes.
+  const _registeredExecutionKeys = orderedTargets.map((t) => t.executionKey).filter(Boolean);
 
   // Pipeline dispatch: route smart/pipeline-enabled combos through the multi-stage pipeline
   if (strategy === "auto") {
