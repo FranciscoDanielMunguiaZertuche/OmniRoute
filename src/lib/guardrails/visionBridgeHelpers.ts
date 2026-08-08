@@ -87,9 +87,13 @@ export function resolveVisionBridgeBaseUrl(model?: string): string {
 
 export interface ImagePart {
   messageIndex: number;
-  partIndex: number;
+  /**
+   * Path (indices/keys) from the message to the image-bearing node.
+   * `[]` means the message content itself was the image (bare data-URI string).
+   */
+  partPath: Array<number | string>;
   imageUrl: string;
-  imageType: "image_url" | "image";
+  imageType: "image_url" | "image" | "input_image" | "string" | "image-src";
 }
 
 export interface RequestMessage {
@@ -104,7 +108,13 @@ export type RequestContentPart =
 
 /**
  * Extract image parts from messages array.
- * Supports both OpenAI image_url format and base64 image format.
+ *
+ * #8488-mirror: the combo capability gate detects images via a deep recursive
+ * scan (valueContainsImagePart): strings starting with `data:image/`, parts of
+ * type image/image_url/input_image, `image_url`/`input_image` keys, and any
+ * source.media_type starting with `image/` (incl. URL-type Anthropic sources).
+ * This helper must detect the SAME shapes, or images the gate sees will 400
+ * before the bridge ever runs (e.g. bare data-URI strings in tool_results).
  */
 export function extractImageParts(messages: RequestMessage[]): ImagePart[] {
   const results: ImagePart[] = [];
@@ -113,33 +123,96 @@ export function extractImageParts(messages: RequestMessage[]): ImagePart[] {
     return results;
   }
 
+  const scan = (
+    value: unknown,
+    depth: number,
+    path: Array<number | string>,
+    messageIndex: number
+  ): void => {
+    if (depth > 8 || value === null || value === undefined) return;
+
+    if (typeof value === "string") {
+      if (value.startsWith("data:image/")) {
+        results.push({ messageIndex, partPath: path, imageUrl: value, imageType: "string" });
+      }
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      for (let i = 0; i < value.length; i++) {
+        scan(value[i], depth + 1, [...path, i], messageIndex);
+      }
+      return;
+    }
+
+    if (typeof value !== "object") return;
+    const obj = value as Record<string, unknown>;
+    const type = typeof obj.type === "string" ? (obj.type as string).toLowerCase() : null;
+
+    if (
+      type === "image" ||
+      type === "image_url" ||
+      type === "input_image" ||
+      "image_url" in obj ||
+      "input_image" in obj
+    ) {
+      let url: string | null = null;
+      const imageUrlObj =
+        typeof obj.image_url === "object" && obj.image_url !== null
+          ? (obj.image_url as Record<string, unknown>)
+          : null;
+      if (imageUrlObj && typeof imageUrlObj.url === "string") {
+        url = imageUrlObj.url;
+      } else {
+        const src =
+          typeof obj.source === "object" && obj.source !== null
+            ? (obj.source as Record<string, unknown>)
+            : null;
+        if (src) {
+          if (typeof src.url === "string") {
+            url = src.url;
+          } else if (
+            src.type === "base64" &&
+            typeof src.media_type === "string" &&
+            typeof src.data === "string"
+          ) {
+            url = `data:${src.media_type};base64,${src.data}`;
+          }
+        }
+      }
+      if (url) {
+        results.push({ messageIndex, partPath: path, imageUrl: url, imageType: "image" });
+      }
+      return; // do not descend into an image node
+    }
+
+    const src =
+      typeof obj.source === "object" && obj.source !== null
+        ? (obj.source as Record<string, unknown>)
+        : null;
+    if (
+      src &&
+      typeof src.media_type === "string" &&
+      src.media_type.toLowerCase().startsWith("image/")
+    ) {
+      results.push({
+        messageIndex,
+        partPath: path,
+        imageUrl: typeof src.url === "string" ? src.url : "",
+        imageType: "image-src",
+      });
+      return;
+    }
+
+    for (const key of Object.keys(obj)) {
+      scan(obj[key], depth + 1, [...path, key], messageIndex);
+    }
+  };
+
   for (let msgIdx = 0; msgIdx < messages.length; msgIdx++) {
     const message = messages[msgIdx];
-    if (!message || !Array.isArray(message.content)) {
-      continue;
-    }
-
-    for (let partIdx = 0; partIdx < message.content.length; partIdx++) {
-      const part = message.content[partIdx];
-
-      if (part?.type === "image_url" && part.image_url?.url) {
-        results.push({
-          messageIndex: msgIdx,
-          partIndex: partIdx,
-          imageUrl: part.image_url.url,
-          imageType: "image_url",
-        });
-      } else if (part?.type === "image" && part.source?.type === "base64") {
-        const { media_type, data } = part.source;
-        const dataUri = `data:${media_type};base64,${data}`;
-        results.push({
-          messageIndex: msgIdx,
-          partIndex: partIdx,
-          imageUrl: dataUri,
-          imageType: "image",
-        });
-      }
-    }
+    if (!message) continue;
+    scan(message.content, 0, [], msgIdx);
   }
 
   return results;
@@ -460,35 +533,43 @@ export function replaceImageParts(
     return result;
   }
 
+  // Re-extract on the clone so hits are aligned with the same traversal order
+  // the bridge used (extractImageParts now mirrors the gate's recursive scan).
+  const hits = extractImageParts(result.messages as RequestMessage[]);
   let descriptionIndex = 0;
 
-  for (let msgIdx = 0; msgIdx < result.messages.length; msgIdx++) {
-    const message = result.messages[msgIdx];
-    if (!message || !Array.isArray(message.content)) {
+  for (const hit of hits) {
+    if (descriptionIndex >= descriptions.length) break;
+    const description = descriptions[descriptionIndex++];
+    if (description == null) {
+      // #4012: describe failed for this image — preserve the original
+      // image so a vision-capable upstream can still process it.
       continue;
     }
 
-    const newContent: RequestContentPart[] = [];
+    const message = result.messages?.[hit.messageIndex];
+    if (!message) continue;
 
-    for (const part of message.content) {
-      if (part?.type === "image_url" || part?.type === "image") {
-        if (descriptionIndex < descriptions.length) {
-          const description = descriptions[descriptionIndex];
-          descriptionIndex++;
-          if (description == null) {
-            // #4012: describe failed for this image — preserve the original
-            // image so a vision-capable upstream can still process it.
-            newContent.push(part as RequestContentPart);
-          } else {
-            newContent.push({ type: "text", text: description });
-          }
-        }
-      } else {
-        newContent.push(part as RequestContentPart);
-      }
+    if (hit.partPath.length === 0) {
+      // The message content itself was a bare data-URI image string.
+      (message as { content?: unknown }).content = description;
+      continue;
     }
 
-    message.content = newContent;
+    // Paths are relative to message.content (extractImageParts scans content).
+    let node: unknown = (message as Record<string, unknown>).content;
+    if (node === null || typeof node !== "object") continue;
+    for (let i = 0; i < hit.partPath.length - 1; i++) {
+      if (node === null || typeof node !== "object") break;
+      node = (node as Record<string, unknown>)[hit.partPath[i]];
+    }
+    if (node === null || typeof node !== "object") continue;
+    const last = hit.partPath[hit.partPath.length - 1];
+    const previous = (node as Record<string, unknown>)[last];
+    (node as Record<string, unknown>)[last] =
+      typeof previous === "object" && previous !== null && !Array.isArray(previous)
+        ? { type: "text", text: description }
+        : description;
   }
 
   return result;

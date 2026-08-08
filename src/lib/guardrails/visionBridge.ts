@@ -308,6 +308,15 @@ export class VisionBridgeGuardrail extends BaseGuardrail {
       const message =
         result.reason instanceof Error ? result.reason.message : String(result.reason);
       logger?.warn?.("VISION-BRIDGE", `Failed to get description for image ${i + 1}: ${message}`);
+      // Combo with proven non-vision targets ("process"): keeping the original
+      // image guarantees the capability gate 400s ("No target in combo ... has
+      // confirmed vision support for this image request"). Substitute an
+      // explicit text placeholder so the request completes text-only. #4012
+      // keep-image behavior is preserved for individual (non-combo) models
+      // whose upstream capability could not be proven.
+      if (comboVisionBridgeDecision === "process") {
+        return `[Image ${i + 1} omitted: this model does not support image input]`;
+      }
       return null;
     });
 
