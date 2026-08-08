@@ -251,6 +251,8 @@ import {
   isContextOverflow400,
   isParamValidation400,
   isModelScoped400,
+  isWafHtmlBlockError,
+  RR_FAIL_FAST_MS,
 } from "./combo/comboPredicates.ts";
 export {
   getConnectionStatusQuotaCutoffReason,
@@ -2175,7 +2177,12 @@ export async function handleComboChat({
           if (i > 0) fallbackCount++;
           // Wire combo failures into the resilience dashboard (model-level lockout)
           // alongside the provider-level cooldown below — they govern different scopes.
-          if (provider && rawModel && !scopedFailure) {
+          if (
+            provider &&
+            rawModel &&
+            !scopedFailure &&
+            !isWafHtmlBlockError(result.status, errorText)
+          ) {
             const mlSettings = resolveModelLockoutSettings(settings);
             if (mlSettings.enabled && mlSettings.errorCodes.includes(result.status)) {
               recordModelLockoutFailure(
@@ -2366,7 +2373,10 @@ export async function handleComboChat({
       if (
         !lastStatus ||
         lastStatus === 429 ||
-        (typeof lastStatus === "number" && lastStatus >= 500)
+        (typeof lastStatus === "number" && lastStatus >= 500) ||
+        // WAF HTML-block 403: same transient semantics — wait + recurse instead
+        // of surfacing a raw HTML page to the client (combo-hang fix).
+        (typeof lastStatus === "number" && isWafHtmlBlockError(lastStatus, lastError || ""))
       ) {
         // PATCHED 2026-07-14: recurse on 429/5xx instead of returning ALL_ACCOUNTS_INACTIVE.
         //
@@ -2411,7 +2421,12 @@ export async function handleComboChat({
             (comboErrors.length > 5 ? `... (+${comboErrors.length - 5})` : "") +
             "]"
           : "";
-      const msg = (lastError || "All combo models unavailable") + comboErrorSummary;
+      // Never surface a raw WAF HTML page to the client; replace it with a clean message.
+      const cleanLastError =
+        typeof lastStatus === "number" && isWafHtmlBlockError(lastStatus, lastError || "")
+          ? "Upstream blocked the request (WAF/access denied). Retry shortly."
+          : lastError;
+      const msg = (cleanLastError || "All combo models unavailable") + comboErrorSummary;
 
       // Cooldown-aware retry: instead of crystallizing a transient failure, wait
       // out a SHORT cooldown and re-run the whole set loop. Guarded by the helper
@@ -2556,6 +2571,7 @@ async function handleRoundRobinCombo({
   settings,
   allCombos,
   signal,
+  rrFailFastDeadlineMs,
 }: HandleRoundRobinOptions): Promise<Response> {
   const config = settings
     ? resolveComboConfig(combo, settings)
@@ -2818,6 +2834,17 @@ async function handleRoundRobinCombo({
 
   const clientRequestedStream = body?.stream === true;
   const startTime = Date.now();
+  // Combo-hang fix: absolute fail-fast deadline for the whole round-robin
+  // request. Stamped on the FIRST entry and threaded through the exhausted-wait
+  // recursion so the loop never hangs past the fail-fast window when every tier
+  // is flapping (429 / 5xx / WAF-403 / per-target timeouts). Operator override
+  // via combo config `rrFailFastMs` (ms, > 0); default RR_FAIL_FAST_MS.
+  const rrFailFastConfigMs = Number((config as Record<string, unknown>).rrFailFastMs);
+  const rrFailFastMs =
+    Number.isFinite(rrFailFastConfigMs) && rrFailFastConfigMs > 0
+      ? rrFailFastConfigMs
+      : RR_FAIL_FAST_MS;
+  const rrFailFastDeadline = rrFailFastDeadlineMs ?? startTime + rrFailFastMs;
   let lastError: string | null = null;
   let lastStatus: number | null = null;
   let earliestRetryAfter: ComboRetryAfter | null = null;
@@ -2838,6 +2865,16 @@ async function handleRoundRobinCombo({
     const target = filteredTargets[modelIndex];
     const modelStr = target.modelStr;
     const provider = target.provider;
+    // Combo-hang fix: once the fail-fast window expires, stop dispatching NEW
+    // targets — every earlier target already failed/hung, so retrying further
+    // just burns the client's patience. Return 503 so the client can retry.
+    if (offset > 0 && Date.now() >= rrFailFastDeadline) {
+      log.warn(
+        "COMBO-RR",
+        `All RR targets failed within ${rrFailFastMs}ms fail-fast window (lastStatus=${lastStatus}) — returning 503`
+      );
+      return unavailableResponse(503, "All round-robin combo models unavailable; retry shortly");
+    }
     const profile = await getRuntimeProviderProfile(provider);
     const semaphoreKey = `combo:${combo.name}:${target.executionKey}`;
     const allowRateLimitedConnection =
@@ -3306,8 +3343,9 @@ async function handleRoundRobinCombo({
           !isStreamReadinessFailure &&
           !isTokenLimitBreach &&
           !scopedFailure &&
-          TRANSIENT_FOR_SEMAPHORE.includes(result.status) &&
-          cooldownMs > 0
+          cooldownMs > 0 &&
+          (TRANSIENT_FOR_SEMAPHORE.includes(result.status) ||
+            isWafHtmlBlockError(result.status, errorText))
         ) {
           semaphore.markRateLimited(semaphoreKey, cooldownMs);
           log.warn("COMBO-RR", `${modelStr} error ${result.status}, cooldown ${cooldownMs}ms`);
@@ -3322,10 +3360,14 @@ async function handleRoundRobinCombo({
 
         // Transient error → retry same model.
         // A token-limit 429 is terminal for the client — never retry it.
+        // A WAF HTML-block 403 (Cloudflare "Access denied" / errorCode 1010) is
+        // infrastructure flakiness, not an auth failure — treat it as transient
+        // so the loop advances and benches the flagged connection.
         const isTransient =
           !isStreamReadinessFailure &&
           !isTokenLimitBreach &&
-          [408, 429, 500, 502, 503, 504].includes(result.status);
+          ([408, 429, 500, 502, 503, 504].includes(result.status) ||
+            isWafHtmlBlockError(result.status, errorText));
         if (retry < maxRetries && isTransient && !providerExhausted) {
           // If we have more targets remaining in the round-robin AND another target
           // uses a DIFFERENT connection, advance to it immediately instead of
@@ -3348,7 +3390,11 @@ async function handleRoundRobinCombo({
               // silently for targetTimeoutMs). Bench the connection so subsequent
               // requests skip it instead of burning 30s per target while the
               // upstream (e.g. NVIDIA NIM free tier saturation) is unresponsive.
-              result.status === 524)
+              result.status === 524 ||
+              // WAF HTML-block 403 (Cloudflare 1010): the upstream flagged the
+              // egress — bench the connection so later requests skip it, and
+              // advance instead of retrying the same flagged key.
+              isWafHtmlBlockError(result.status, errorText))
           ) {
             // PATCHED 2026-07-14: record per-key fixed backoff. Without this,
             // the combo would re-fire the same throttled key on the next
@@ -3476,7 +3522,14 @@ async function handleRoundRobinCombo({
     });
   }
 
-  if (!lastStatus || lastStatus === 429 || (typeof lastStatus === "number" && lastStatus >= 500)) {
+  if (
+    !lastStatus ||
+    lastStatus === 429 ||
+    (typeof lastStatus === "number" && lastStatus >= 500) ||
+    // WAF HTML-block 403: same transient semantics — wait + recurse instead of
+    // surfacing a raw HTML page to the client (combo-hang fix).
+    (typeof lastStatus === "number" && isWafHtmlBlockError(lastStatus, lastError || ""))
+  ) {
     // PATCHED 2026-07-14: when all targets exhausted on transient errors (429/5xx) or
     // when lastStatus is null, wait and recurse into handleRoundRobinCombo instead of
     // returning a misleading ALL_ACCOUNTS_INACTIVE 503. NVIDIA's 429/503 RPM throttles
@@ -3520,6 +3573,19 @@ async function handleRoundRobinCombo({
       waitMs = Math.min(defaultBackoffMs, Math.max(0, earliestRemaining));
       waitReason = `waiting until earliest per-key backoff expires (${backoffState.length} keys throttled, earliest in ${Math.ceil(waitMs / 1000)}s)`;
     }
+    // Combo-hang fix: cap the exhausted-wait at the fail-fast deadline. If the
+    // deadline already passed, return a clean 503 instead of recursing forever
+    // while every tier is flapping.
+    const rrRemaining = Math.max(0, rrFailFastDeadline - Date.now());
+    if (rrRemaining <= 0) {
+      log.warn(
+        "COMBO-RR",
+        `All RR targets exhausted (status=${lastStatus}) past the ${rrFailFastMs}ms fail-fast window — returning 503`
+      );
+      (combo as unknown as Record<string, unknown>).__exhaustedStartMs = undefined;
+      return unavailableResponse(503, "All round-robin combo models unavailable; retry shortly");
+    }
+    waitMs = Math.min(waitMs, rrRemaining);
     log.warn("COMBO-RR", `All RR targets exhausted status=${lastStatus} — ${waitReason}`);
     await new Promise((r) => setTimeout(r, waitMs));
     return handleRoundRobinCombo({
@@ -3531,6 +3597,7 @@ async function handleRoundRobinCombo({
       settings,
       allCombos,
       signal,
+      rrFailFastDeadlineMs: rrFailFastDeadline,
     });
   } else {
     // Success path — clear the exhaustion timer
@@ -3538,7 +3605,11 @@ async function handleRoundRobinCombo({
   }
 
   const status = lastStatus;
-  const msg = lastError || "All round-robin combo models unavailable";
+  // Never surface a raw WAF HTML page to the client; replace it with a clean message.
+  const msg =
+    typeof lastStatus === "number" && isWafHtmlBlockError(lastStatus, lastError || "")
+      ? "Upstream blocked the request (WAF/access denied). Retry shortly."
+      : lastError || "All round-robin combo models unavailable";
 
   if (earliestRetryAfter && isRetryAfterEligibleStatus(status)) {
     const retryHuman = formatRetryAfter(toRetryAfterDisplayValue(earliestRetryAfter));

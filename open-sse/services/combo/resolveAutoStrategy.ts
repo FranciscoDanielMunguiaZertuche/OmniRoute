@@ -1,4 +1,8 @@
-import { errorResponse, unavailableResponse, errorResponseWithComboDiagnostics } from "../../utils/error.ts";
+import {
+  errorResponse,
+  unavailableResponse,
+  errorResponseWithComboDiagnostics,
+} from "../../utils/error.ts";
 import { BudgetExceededError, selectProvider as selectAutoProvider } from "../autoCombo/engine.ts";
 import {
   resolveRequestModePack,
@@ -8,6 +12,7 @@ import {
 import { selectWithStrategy } from "../autoCombo/routerStrategy.ts";
 import { buildComplexityRoutingHint } from "../autoCombo/complexityRouter";
 import { getModePack } from "../autoCombo/modePacks.ts";
+import { getTaskFitness } from "../autoCombo/taskFitness.ts";
 import { recordComboIntent } from "../comboMetrics.ts";
 import { estimateTokens } from "../contextManager.ts";
 import { classifyWithConfig } from "../intentClassifier.ts";
@@ -80,6 +85,16 @@ export type ResolveAutoStrategyResult =
   | { orderedTargets: ResolvedComboTarget[]; autoUsedExplicitRouter: boolean };
 
 /**
+ * No-silent-downgrade guard for quality-seeking auto combos (combo-hang fix):
+ * when the selected model's task fitness falls more than this gap below the
+ * pool's best-fit routable candidate (and that best is a genuinely strong
+ * model, >= 0.7), the scoring has let health/latency swamp a huge quality gap —
+ * re-route to the best-fit candidate instead of serving e.g. llama-3.1-8b while
+ * deepseek-v4-flash-free is routable.
+ */
+export const AUTO_QUALITY_FLOOR_GAP = 0.08;
+
+/**
  * Resolve target ordering for the `auto` combo strategy.
  *
  * Extracted verbatim from `handleComboChat`'s `if (strategy === "auto")` branch:
@@ -118,8 +133,7 @@ export async function resolveAutoStrategyOrder(
     // registry/capability rows honestly report toolCalling:false.
     const filtered = eligibleTargets.filter(
       (target) =>
-        supportsToolCalling(target.modelStr) ||
-        providerSupportsEmulatedToolCalling(target.provider)
+        supportsToolCalling(target.modelStr) || providerSupportsEmulatedToolCalling(target.provider)
     );
     if (filtered.length > 0) {
       eligibleTargets = filtered;
@@ -374,6 +388,38 @@ export async function resolveAutoStrategyOrder(
       selectedModel = selection.model;
       selectedConnectionId = selection.connectionId ?? null;
       selectionReason = `score=${selection.score.toFixed(3)}${selection.isExploration ? " (exploration)" : ""}`;
+    }
+
+    // Combo-hang fix / no-silent-downgrade: for quality-seeking auto combos
+    // (weights.taskFit >= 0.25 — quality-first mode packs used by auto/best-coding,
+    // auto/smart, and non-chat category/tier combos), never let the scoring serve
+    // a model whose task fitness is far below the pool's best routable candidate.
+    // Health/latency/cost weights can otherwise swamp a huge fitness gap (e.g.
+    // llama-3.1-8b at 0.55 served while deepseek-v4-flash-free at 0.74 is
+    // routable). Re-route to the best-fit candidate instead of silently
+    // downgrading quality; the downstream target-matching below picks the
+    // matching target, or the best-ranked target as a last resort.
+    if (weights.taskFit >= 0.25) {
+      const poolFit = routableCandidates
+        .map((candidate) => ({
+          candidate,
+          fit: getTaskFitness(candidate.model, taskType),
+        }))
+        .sort((a, b) => b.fit - a.fit);
+      const bestFit = poolFit[0];
+      if (bestFit && bestFit.fit >= 0.7) {
+        const selectedFit = getTaskFitness(selectedModel || "", taskType);
+        if (selectedFit > 0 && bestFit.fit - selectedFit > AUTO_QUALITY_FLOOR_GAP) {
+          log.warn(
+            "COMBO",
+            `Auto ${combo.name} refused a silent quality downgrade: ${selectedProvider}/${selectedModel} (taskFit ${selectedFit.toFixed(2)}) while ${bestFit.candidate.provider}/${bestFit.candidate.model} (taskFit ${bestFit.fit.toFixed(2)}) is available — re-routing`
+          );
+          selectedProvider = bestFit.candidate.provider;
+          selectedModel = bestFit.candidate.model;
+          selectedConnectionId = bestFit.candidate.connectionId ?? null;
+          selectionReason = `quality-floor re-route (best-fit ${bestFit.fit.toFixed(2)} vs selected ${selectedFit.toFixed(2)})`;
+        }
+      }
     }
 
     // Complexity-aware routing (2026, opt-in): classify the request's

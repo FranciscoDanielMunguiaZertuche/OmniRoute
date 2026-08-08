@@ -112,7 +112,16 @@ export type HandleComboChatOptions = {
 export type HandleRoundRobinOptions = Omit<
   HandleComboChatOptions,
   "relayOptions" | "apiKeyAllowedConnections"
->;
+> & {
+  /**
+   * Fail-fast deadline (epoch ms) for the whole round-robin request. Stamped on
+   * the FIRST entry of handleRoundRobinCombo and threaded through the
+   * exhausted-wait recursion so the loop never hangs past the fail-fast window
+   * when every tier is flapping (combo-hang fix). Absent on the initial call;
+   * set once the exhausted-wait branch first runs.
+   */
+  rrFailFastDeadlineMs?: number;
+};
 
 export type HistoricalLatencyStatsEntry = {
   totalRequests?: number;

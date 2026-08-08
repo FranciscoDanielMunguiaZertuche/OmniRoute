@@ -42,8 +42,18 @@ const FITNESS_TABLE: Record<string, Record<string, number>> = {
     "deepseek-r1": 0.88,
     "deepseek-chat": 0.84, // DeepSeek V3.2 Chat — strong code performance
     "deepseek-v3.2": 0.86, // Explicit V3.2 alias
+    // DeepSeek V4 family (arena-verified: deepseek-v4-flash-high 0.7364 /
+    // deepseek-v4-flash-high-preview 0.7373) — includes free/zen variants
+    // ("deepseek-v4-flash-free") that have no exact arena row and would
+    // otherwise fall through to the 0.5 wildcard boost, losing every
+    // free-vs-paid comparison and silently downgrading auto/best-coding.
+    "deepseek-v4": 0.74,
     qwen: 0.78,
     llama: 0.72,
+    // 8B-class Llama is a weak code model — pin it far below the DeepSeek V4
+    // flash tier so auto/best-coding never serves it over a stronger fallback.
+    "llama-3.1-8b": 0.55,
+    "llama-3.2-3b": 0.45,
     mistral: 0.75,
     mixtral: 0.77,
     // Grok-4 fast — good code, ultra-low latency (1143ms P50)
@@ -126,6 +136,11 @@ const FITNESS_TABLE: Record<string, Record<string, number>> = {
     "gemini-3.1-pro": 0.85,
     "deepseek-v3": 0.75,
     "deepseek-chat": 0.74,
+    // DeepSeek V4 family — see the coding-table comment; keeps free/zen variants
+    // from collapsing to the 0.5 wildcard boost.
+    "deepseek-v4": 0.74,
+    // 8B-class Llama is a weak general model — pin below DeepSeek V4 flash.
+    "llama-3.1-8b": 0.5,
     "gemini-flash": 0.72,
     // New models from ClawRouter analysis (2026-03-17):
     "grok-4-fast": 0.72, // ultra-fast, suitable for all tasks

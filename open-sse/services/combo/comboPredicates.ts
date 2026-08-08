@@ -16,6 +16,39 @@ import type { ResolvedComboTarget } from "./types.ts";
 
 // Status codes that should mark round-robin target semaphores as cooling down.
 export const TRANSIENT_FOR_SEMAPHORE = [429, 502, 503, 504];
+
+/**
+ * Fail-fast ceiling (ms) for the round-robin exhausted/retry loop (combo-hang fix).
+ * When EVERY tier is flapping (429 / 5xx / WAF-403 / per-target timeouts), the RR
+ * handler must return a 503 to the client instead of hanging until the client's
+ * own budget expires. Starts on the first entry of handleRoundRobinCombo and is
+ * threaded through the exhausted-wait recursion. An operator may override via
+ * combo config `rrFailFastMs` (must be > 0; anything else uses this default).
+ */
+export const RR_FAIL_FAST_MS = 30000;
+
+/**
+ * Detect an infrastructure WAF / browser-challenge block disguised as a 403
+ * (e.g. Cloudflare "Access denied" errorCode 1010 — an HTML page, NOT a JSON
+ * auth error). The key/connection may be valid; the upstream flagged the egress
+ * fingerprint/IP. The combo must treat these as transient — advance to the next
+ * target, bench the connection, and never surface the raw HTML page to the
+ * client. Genuine JSON 403 auth errors (invalid key) are deliberately NOT
+ * matched and stay terminal.
+ */
+export function isWafHtmlBlockError(status: number, errorText: string | null | undefined): boolean {
+  if (status !== 403) return false;
+  const text = String(errorText || "").toLowerCase();
+  if (!text) return false;
+  return (
+    text.includes("<!doctype") ||
+    text.includes("<html") ||
+    text.includes("cloudflare") ||
+    text.includes("access denied") ||
+    ((text.includes("errorcode") || text.includes("error code")) && text.includes("1010")) ||
+    text.includes("browser's signature")
+  );
+}
 // Patterns that signal all accounts for a provider are rate-limited / exhausted.
 // Used to detect 503 responses from handleNoCredentials so combo can fallback.
 export const ALL_ACCOUNTS_RATE_LIMITED_PATTERNS = [
