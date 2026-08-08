@@ -21,6 +21,7 @@ import {
   selectLockoutCooldownMs,
 } from "./accountFallback.ts";
 import {
+  buildErrorBody,
   errorResponse,
   unavailableResponse,
   errorResponseWithComboDiagnostics,
@@ -33,12 +34,16 @@ import {
 } from "./combo/failureTracker.ts";
 import { buildNoUpstreamResponseDiagnostics, buildRecoveryHint } from "./combo/pinRecovery.ts";
 import { buildTargetTimeoutRunner } from "./combo/targetTimeoutRunner.ts";
+import { FETCH_TIMEOUT_MS } from "../config/constants.ts";
 import { recordComboRequest, recordComboShadowRequest, getComboMetrics } from "./comboMetrics.ts";
 import {
   resolveComboConfig,
   getDefaultComboConfig,
   resolveComboQueueDepth,
   isComboCooldownWaitEligible,
+  resolveProviderTargetTimeoutMs,
+  DEFAULT_COMBO_TARGET_TIMEOUT_MS,
+  COMBO_TARGET_TIMEOUT_WAIT_BUFFER_MS,
 } from "./comboConfig.ts";
 import {
   maybeGenerateHandoff,
@@ -87,7 +92,10 @@ import {
   resolvePromptCacheAffinityKey,
 } from "./combo/promptCacheAffinity.ts";
 import type { CompressionMode } from "./compression/types.ts";
-import { getCachedProviderConnections } from "../../src/lib/db/readCache";
+import {
+  getCachedProviderConnections,
+  getCachedProviderConnectionById,
+} from "../../src/lib/db/readCache";
 import { runWithProxyContext } from "../utils/proxyFetch.ts";
 import { resolveConnectionProxy, type ConnectionProxyConfig } from "../utils/perConnectionProxy.ts";
 
@@ -109,6 +117,53 @@ async function runTargetWithProxy<T>(
 ): Promise<T> {
   if (!proxyConfig) return fn();
   return runWithProxyContext(proxyConfig, fn);
+}
+
+/**
+ * #8412: proxy fast-fail boundary for combo targets. `runWithProxyContext`
+ * THROWS `PROXY_UNREACHABLE` (or `PROXY_FAMILY_UNAVAILABLE`) when the
+ * per-account SOCKS/HTTP proxy in `provider_specific_data.proxy_url` cannot be
+ * reached — a transport-level condition, not an upstream error. If that throw
+ * escapes the target loop, the whole combo dies with an empty 500 before any
+ * target is ever attempted. Convert the throw into a per-target 503 failure
+ * Response tagged `code: "proxy_unreachable"` so the normal per-target failure
+ * handling runs: the loop records the failure, advances to the next target,
+ * and (for same-provider pools) trips the provider breaker via the
+ * `isProxyUnreachable` classification in `shouldRecordProviderBreakerFailure`.
+ * Returns null when the error is NOT proxy-shaped so genuine bugs still
+ * propagate.
+ */
+function proxyUnreachableToTargetFailure(
+  err: unknown,
+  modelStr: string,
+  connectionId: string | undefined,
+  log: ComboLogger
+): Response | null {
+  const errObj = (err ?? null) as (Error & { code?: string; errorCode?: string }) | null;
+  const code = errObj?.code ?? errObj?.errorCode ?? "";
+  if (
+    code !== "PROXY_UNREACHABLE" &&
+    code !== "PROXY_FAMILY_UNAVAILABLE" &&
+    code !== "proxy_unreachable"
+  ) {
+    return null;
+  }
+  const connLabel = connectionId ? connectionId.slice(0, 8) : "?";
+  log.warn(
+    "COMBO",
+    `Proxy unreachable for ${modelStr} (connection ${connLabel}) — failing this target, advancing to next`
+  );
+  return new Response(
+    JSON.stringify(
+      buildErrorBody(
+        503,
+        `Upstream proxy unreachable for ${modelStr} (connection ${connLabel})`,
+        undefined,
+        { type: "server_error", code: "proxy_unreachable" }
+      )
+    ),
+    { status: 503, headers: { "Content-Type": "application/json" } }
+  );
 }
 import {
   isProviderInCooldown,
@@ -132,6 +187,7 @@ import { resolveReasoningBufferedMaxTokens, toPositiveInteger } from "./reasonin
 import { RESET_WINDOW_NAMES } from "./combo/types.ts";
 import type {
   ComboLike,
+  ComboLogger,
   ComboRetryAfter,
   ComboErrorBody,
   SingleModelTarget,
@@ -242,12 +298,23 @@ import {
   type ResetWindowConfig,
 } from "./combo/quotaScoring.ts";
 import { fetchResetAwareQuotaWithCache, preScreenTargets } from "./combo/quotaStrategies.ts";
+import type { PreScreenResult } from "./combo/quotaStrategies.ts";
 import {
   buildAutoQuotaThresholds,
   resolveQuotaExhaustionCutoffForTarget,
 } from "./combo/quotaExhaustionCutoff.ts";
 import { expandTargetsByFingerprints } from "./combo/fingerprintExpansion.ts";
 import { resolveComboTargetPipeline } from "./combo/targetResolution.ts";
+import { parseAutoPrefix } from "./autoCombo/autoPrefix.ts";
+import { handlePipelineCombo, buildPipelineResponse } from "./autoCombo/pipelineRouter.ts";
+import { resolveAutoStrategyOrder } from "./combo/resolveAutoStrategy.ts";
+import { applyStrategyOrdering } from "./combo/applyStrategyOrdering.ts";
+import {
+  isTaskRoutingStrategy,
+  classifyTask,
+  getConversationCacheKey,
+  reorderByTaskWeight,
+} from "./taskAwareRouting.ts";
 
 export { RESET_WINDOW_NAMES, QUOTA_SOFT_DEPRIORITIZE_FACTOR, setCandidateQuotaSoftPenalty };
 export { scoreAutoTargets, expandAutoComboCandidatePool };
@@ -616,10 +683,33 @@ export async function handleComboChat({
   } = phaseComboSetup(comboCtx);
   body = comboCtx.body;
 
+  // Combo-hang fix (2026-08-08): resolve the per-target timeout per PROVIDER so
+  // hang-prone upstreams (NVIDIA NIM free-tier saturation) fail fast and the combo
+  // advances to the next tier instead of stalling. Precedence: provider override >
+  // combo targetTimeoutMs > per-provider default (nvidia 15s) > combo default. The
+  // wait floor (cooldown-wait budget) applies through the generic default path.
+  const cooldownWaitFloorMs = isComboCooldownWaitEligible(
+    strategy,
+    resilienceSettings.comboCooldownWait
+  )
+    ? Math.max(
+        DEFAULT_COMBO_TARGET_TIMEOUT_MS,
+        resilienceSettings.comboCooldownWait.budgetMs + COMBO_TARGET_TIMEOUT_WAIT_BUFFER_MS
+      )
+    : DEFAULT_COMBO_TARGET_TIMEOUT_MS;
+
   const handleSingleModelWithTimeout = buildTargetTimeoutRunner({
     handleSingleModel,
     comboTargetTimeoutMs,
     log,
+    resolveTargetTimeoutMs: (target) =>
+      resolveProviderTargetTimeoutMs(
+        target && "provider" in target ? (target.provider ?? target.providerId ?? null) : null,
+        config,
+        settings,
+        FETCH_TIMEOUT_MS,
+        cooldownWaitFloorMs
+      ),
   });
 
   // Dispatch prelude: context-cache pin → fusion → chaos → pipeline → nested
@@ -895,7 +985,7 @@ export async function handleComboChat({
     if (isKeyAvailable(t.connectionId)) return true;
     log.info(
       "COMBO",
-      `Skipping ${t.provider ?? t.providerId ?? "?"}/${t.modelStr ?? t.model ?? "?"} — connection ${t.connectionId} in fixed backoff (${getDefaultBackoffMs()}ms)`
+      `Skipping ${t.provider ?? t.providerId ?? "?"}/${t.modelStr ?? "?"} — connection ${t.connectionId} in fixed backoff (${getDefaultBackoffMs()}ms)`
     );
     return false;
   });
@@ -933,61 +1023,6 @@ export async function handleComboChat({
     }
     orderedTargets = nextOrder;
   }
-
-  // Parallel pre-screen: check provider profiles and model availability for all targets
-  // Only runs for priority strategy where sequential checking causes latency
-  const preScreenMap =
-    strategy === "priority"
-      ? await preScreenTargets(orderedTargets, isModelAvailable).catch(
-          () => new Map<string, PreScreenResult>()
-        )
-      : new Map<string, PreScreenResult>();
-
-  // #5923 (Finding #4) — reset-window config for the shared per-target quota-
-  // exhaustion cutoff below. The "auto" strategy already applies its own cutoff
-  // via buildAutoCandidates/routableCandidates, so this only affects the other
-  // 16 strategies (priority, weighted, etc.) that funnel through executeTarget.
-  const quotaCutoffResetWindowConfig = resolveResetWindowConfig(config as Record<string, unknown>);
-
-  // QA P0 diagnostics: record the order in which targets were actually attempted
-  // (provider/model ids only) so a terminal combo failure can report the attempt
-  // sequence alongside pool size + exhaustion reasons. Accumulates across set retries.
-  const comboAttemptOrder: Array<{ provider: string; model: string }> = [];
-
-  if (orderedTargets.length === 0) {
-    // Surface a recovery hint + auto-clear the session pin after enough consecutive
-    // no-target failures (silent-stop fix). Threshold of 3 prevents a one-off account
-    // wipe from destroying the prompt-cache pin benefit on the next request.
-    recordComboFailure(effectiveSessionId, combo.name);
-    return errorResponseWithComboDiagnostics(
-      404,
-      "Combo has no executable targets",
-      {
-        poolSize: 0,
-        attempted: 0,
-        excluded: [],
-        attemptOrder: [],
-        terminalReason: "no_executable_targets",
-        recovery: buildRecoveryHint("no_executable_targets"),
-      },
-      { code: "model_not_found", type: "invalid_request_error" }
-    );
-  }
-
-  scheduleShadowRouting(
-    combo,
-    config,
-    body,
-    resolveShadowTargets(combo, config, allCombos),
-    handleSingleModel,
-    isModelAvailable,
-    strategy,
-    log
-  );
-
-  // G2: Collect execution keys registered by _registerExecutionCandidates above (auto strategy).
-  // We snapshot them now so cleanup can happen after the attempt loop finishes.
-  const _registeredExecutionKeys = orderedTargets.map((t) => t.executionKey).filter(Boolean);
 
   let globalAttempts = 0;
 
@@ -1399,7 +1434,7 @@ export async function handleComboChat({
             }
           }
           const targetConnection = target.connectionId
-            ? connectionById.get(target.connectionId)
+            ? await getCachedProviderConnectionById(target.connectionId)
             : undefined;
           const targetProxyConfig = resolveConnectionProxy(targetConnection);
           // #5297 fix: per-target retry-on-empty. Some upstreams (notably
@@ -1417,13 +1452,30 @@ export async function handleComboChat({
           let emptyRetryCount = 0;
           let emptyReason = "";
           for (let emptyAttempt = 0; emptyAttempt <= EMPTY_RESPONSE_MAX_RETRIES; emptyAttempt++) {
-            const attemptResult = await runTargetWithProxy(targetProxyConfig, () =>
-              handleSingleModelWithTimeout(attemptBody, modelStr, {
-                ...targetForAttempt,
-                effectiveComboStrategy: strategy,
-                failoverBeforeRetry: config.failoverBeforeRetry,
-              })
-            );
+            // #8412: a dead per-account proxy throws PROXY_UNREACHABLE instead
+            // of returning a response. Catch it and convert to a per-target 503
+            // so the loop advances instead of the error escaping to the route
+            // (empty 500 before any target is attempted).
+            let attemptResult: Response;
+            try {
+              attemptResult = await runTargetWithProxy(targetProxyConfig, () =>
+                handleSingleModelWithTimeout(attemptBody, modelStr, {
+                  ...targetForAttempt,
+                  effectiveComboStrategy: strategy,
+                  failoverBeforeRetry: config.failoverBeforeRetry,
+                })
+              );
+            } catch (proxyErr) {
+              const proxyFailure = proxyUnreachableToTargetFailure(
+                proxyErr,
+                modelStr,
+                target.connectionId ?? undefined,
+                log
+              );
+              if (!proxyFailure) throw proxyErr;
+              result = proxyFailure;
+              break;
+            }
 
             // HTTP-level failure (network, 5xx, etc.) — bubble up immediately,
             // no point retrying on the same target for a transient connection error.
@@ -1476,6 +1528,12 @@ export async function handleComboChat({
           }
 
           // Success — validate response quality before returning
+          // Defensive guard: the retry loop always assigns `result` before
+          // breaking, but TS cannot always prove that across the enclosing
+          // set-loop scope; treat the unreachable null as a 502 failure.
+          if (!result) {
+            result = errorResponse(502, "Upstream model error");
+          }
           if (result.ok) {
             const selectedConnectionId =
               result.headers?.get("X-OmniRoute-Selected-Connection-Id") ||
@@ -2571,6 +2629,22 @@ async function handleRoundRobinCombo({
     "Context-aware round-robin fallback",
     { failOpen: rrCompatFailOpen }
   );
+  // Combo-hang fix (2026-08-08): the RR path never applied the per-key health
+  // filter that the generic handleComboChat path applies (line ~956), so a key
+  // benched by recordKeyTimeout/recordKeyBackoff was retried by the very next
+  // round-robin request, burning the full per-target timeout again. Mirror the
+  // generic filter here: skip targets whose connection is in timeout/429 backoff.
+  if (filteredTargets.length > 1) {
+    filteredTargets = filteredTargets.filter((t) => {
+      if (!t.connectionId) return true;
+      if (isKeyAvailable(t.connectionId)) return true;
+      log.info(
+        "COMBO-RR",
+        `Skipping ${t.provider ?? t.providerId ?? "?"}/${t.modelStr ?? "?"} — connection ${t.connectionId} in backoff (timeout health / 429)`
+      );
+      return false;
+    });
+  }
   // #6238: keep the targets the compat pre-filter rejected so they can serve as a
   // last-resort fallback tier. The pre-filter drops request-incompatible targets
   // BEFORE availability is known; if every compat-kept target then turns out to be
@@ -2883,7 +2957,7 @@ async function handleRoundRobinCombo({
         }
 
         const rrTargetConnection = target.connectionId
-          ? connectionById.get(target.connectionId)
+          ? await getCachedProviderConnectionById(target.connectionId)
           : undefined;
         const rrProxyConfig = resolveConnectionProxy(rrTargetConnection);
         // #5297 fix: per-target retry-on-empty in the RR path too. Same
@@ -2895,13 +2969,30 @@ async function handleRoundRobinCombo({
         let result: Response | null = null;
         let rrEmptyRetryCount = 0;
         for (let emptyAttempt = 0; emptyAttempt <= EMPTY_RESPONSE_MAX_RETRIES; emptyAttempt++) {
-          const attemptResult = await runTargetWithProxy(rrProxyConfig, () =>
-            handleSingleModel(attemptBody, modelStr, {
-              ...targetForAttempt,
-              effectiveComboStrategy: "round-robin",
-              failoverBeforeRetry: config.failoverBeforeRetry,
-            })
-          );
+          // #8412: a dead per-account proxy throws PROXY_UNREACHABLE instead
+          // of returning a response. Catch it and convert to a per-target 503
+          // so the RR loop advances to the next target (cursor already eagerly
+          // advanced) instead of the error escaping to the route (empty 500).
+          let attemptResult: Response;
+          try {
+            attemptResult = await runTargetWithProxy(rrProxyConfig, () =>
+              handleSingleModel(attemptBody, modelStr, {
+                ...targetForAttempt,
+                effectiveComboStrategy: "round-robin",
+                failoverBeforeRetry: config.failoverBeforeRetry,
+              })
+            );
+          } catch (proxyErr) {
+            const proxyFailure = proxyUnreachableToTargetFailure(
+              proxyErr,
+              modelStr,
+              target.connectionId ?? undefined,
+              log
+            );
+            if (!proxyFailure) throw proxyErr;
+            result = proxyFailure;
+            break;
+          }
 
           if (!attemptResult.ok) {
             result = attemptResult;
@@ -2942,6 +3033,11 @@ async function handleRoundRobinCombo({
         }
 
         // Success — validate response quality before returning
+        // Defensive guard: the retry loop always assigns `result` before
+        // breaking; treat the unreachable null as a 502 failure.
+        if (!result) {
+          result = errorResponse(502, "Upstream model error");
+        }
         if (result.ok) {
           let rrClone: Response;
           try {
@@ -3247,7 +3343,12 @@ async function handleRoundRobinCombo({
               result.status === 503 ||
               result.status === 504 ||
               result.status === 500 ||
-              result.status === 408)
+              result.status === 408 ||
+              // #8332-era: 524 = synthesized combo-per-model timeout (upstream hung
+              // silently for targetTimeoutMs). Bench the connection so subsequent
+              // requests skip it instead of burning 30s per target while the
+              // upstream (e.g. NVIDIA NIM free tier saturation) is unresponsive.
+              result.status === 524)
           ) {
             // PATCHED 2026-07-14: record per-key fixed backoff. Without this,
             // the combo would re-fire the same throttled key on the next

@@ -7,15 +7,26 @@
  * The per-model abort signal still comes from the target (`target.modelAbortSignal`), so
  * the outer request signal is intentionally NOT a dependency here.
  *
+ * 2026-08-08 (combo-hang fix): two additions:
+ *  - `resolveTargetTimeoutMs` lets the caller pick the effective timeout per TARGET
+ *    (e.g. a short fail-fast budget for hang-prone providers like NVIDIA NIM) instead of
+ *    one fixed combo-wide value.
+ *  - when the timeout fires, the synthesised 524 now records per-key timeout health
+ *    (`recordKeyTimeout`) so the connection is benched across requests via the sliding
+ *    window in perKeyBackoff.ts — the combo stops burning the full timeout budget on the
+ *    same dead key/egress on every request.
+ *
  * See _tasks/superpowers/plans/2026-07-03-blocoJ-combo-hotpath-decomposition.md (Task 1).
  */
 import { errorResponse } from "../../utils/error.ts";
+import { recordKeyTimeout } from "../perKeyBackoff.ts";
 import type { HandleSingleModel, SingleModelTarget, ComboLogger } from "./types.ts";
 
 export function buildTargetTimeoutRunner(deps: {
   handleSingleModel: HandleSingleModel;
   comboTargetTimeoutMs: number;
   log: ComboLogger;
+  resolveTargetTimeoutMs?: (target?: SingleModelTarget) => number;
 }): (
   b: Record<string, unknown>,
   modelStr: string,
@@ -27,7 +38,8 @@ export function buildTargetTimeoutRunner(deps: {
     modelStr: string,
     target?: SingleModelTarget
   ): Promise<Response> => {
-    if (comboTargetTimeoutMs <= 0) {
+    const effectiveTimeoutMs = deps.resolveTargetTimeoutMs?.(target) ?? comboTargetTimeoutMs;
+    if (effectiveTimeoutMs <= 0) {
       return handleSingleModel(b, modelStr, target).catch((err) =>
         errorResponse(502, err?.message ?? "Upstream model error")
       );
@@ -36,13 +48,26 @@ export function buildTargetTimeoutRunner(deps: {
     const timeoutController = new AbortController();
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     let timedOut = false;
+    // The target union has a bare `{ modelAbortSignal }` member; only the
+    // ResolvedComboTarget member carries connection health info.
+    const targetConnectionId =
+      target && "connectionId" in target ? (target.connectionId ?? null) : null;
     const timeoutPromise = new Promise<Response>((resolve) => {
       timeoutId = setTimeout(() => {
         timedOut = true;
         log.warn(
           "COMBO",
-          `Model ${modelStr} exceeded ${comboTargetTimeoutMs}ms timeout — falling back`
+          `Model ${modelStr} exceeded ${effectiveTimeoutMs}ms timeout — falling back`
         );
+        // Combo-hang fix: bench the connection so subsequent requests skip it
+        // (sliding-window timeout health) instead of repeating the same hang.
+        if (targetConnectionId) {
+          recordKeyTimeout(targetConnectionId);
+          log.warn(
+            "COMBO",
+            `Connection ${targetConnectionId.slice(0, 8)} timed out — recorded timeout health backoff`
+          );
+        }
         timeoutController.abort(new Error("combo-per-model-timeout"));
         resolve(
           new Response(JSON.stringify({ error: { message: `Model ${modelStr} timed out` } }), {
@@ -50,7 +75,7 @@ export function buildTargetTimeoutRunner(deps: {
             headers: { "Content-Type": "application/json" },
           })
         );
-      }, comboTargetTimeoutMs);
+      }, effectiveTimeoutMs);
     });
     const targetWithSignal = {
       ...(target ?? {}),

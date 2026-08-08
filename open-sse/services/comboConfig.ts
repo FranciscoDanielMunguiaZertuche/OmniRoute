@@ -28,6 +28,18 @@ export const PRE_SCREEN_CONCURRENCY = 5;
 export const DEFAULT_COMBO_TARGET_TIMEOUT_MS = 120_000;
 
 /**
+ * Per-provider default per-target timeout (ms), applied when neither the combo's
+ * own `targetTimeoutMs` nor a provider override sets one. Providers whose
+ * upstreams are prone to silent hangs (NVIDIA NIM free-tier saturation) get a
+ * short fail-fast budget so the combo advances to the next tier instead of
+ * stalling for the generic default. "To first byte": streaming responses are
+ * not cut short past the headers.
+ */
+export const PROVIDER_TARGET_TIMEOUT_DEFAULTS_MS: Record<string, number> = {
+  nvidia: 15_000,
+};
+
+/**
  * Small buffer added on top of the combo-cooldown-wait budget (see below) when deriving
  * the per-target timeout floor for wait-eligible combos. The wait itself is bounded by
  * `resilienceSettings.comboCooldownWait.budgetMs`; this buffer only needs to cover the
@@ -234,6 +246,63 @@ export function resolveComboTargetTimeoutMs(
   if (ceilingTimeoutMs <= 0) return ceilingTimeoutMs;
   if (fallbackDefaultMs <= 0) return ceilingTimeoutMs;
   return Math.min(fallbackDefaultMs, ceilingTimeoutMs);
+}
+
+/**
+ * Per-target timeout for a specific provider (2026-08-08, combo-hang fix).
+ * Precedence (most specific wins), capped at the upstream ceiling:
+ *
+ *   1. settings.providerOverrides[provider].targetTimeoutMs — operator knob
+ *   2. combo.config.targetTimeoutMs — explicit per-combo value (existing contract)
+ *   3. PROVIDER_TARGET_TIMEOUT_DEFAULTS_MS[provider] — per-provider fail-fast default
+ *   4. generic default (`defaultTimeoutMs`, i.e. the combo default / wait floor)
+ *
+ * `waitFloorMs` only raises DEFAULT-derived timeouts (2/3/4) — never an explicit
+ * per-combo or per-provider value — so the cooldown-wait budget is never cut
+ * short by the provider default (mirrors resolveComboTargetTimeoutMsForCombo).
+ */
+export function resolveProviderTargetTimeoutMs(
+  provider: string | null | undefined,
+  config: Record<string, unknown> | null | undefined,
+  settings:
+    | {
+        providerOverrides?: Record<string, Record<string, unknown> | null | undefined> | null;
+      }
+    | null
+    | undefined,
+  upstreamTimeoutMs: number,
+  defaultTimeoutMs: number = 0
+): number {
+  const ceilingTimeoutMs = normalizePositiveTimeoutMs(upstreamTimeoutMs);
+  const clamp = (ms: number): number => {
+    if (ceilingTimeoutMs <= 0) return ms;
+    if (ms <= 0) return ceilingTimeoutMs;
+    return Math.min(ms, ceilingTimeoutMs);
+  };
+
+  // 1. Provider override (operator knob) — wins, never raised by the wait floor.
+  const providerOverride =
+    provider && settings?.providerOverrides?.[provider]
+      ? settings.providerOverrides[provider]
+      : null;
+  const providerOverrideMs = providerOverride
+    ? normalizePositiveTimeoutMs(providerOverride.targetTimeoutMs)
+    : 0;
+  if (providerOverrideMs > 0) return clamp(providerOverrideMs);
+
+  // 2. Explicit per-combo config — wins, never raised by the wait floor.
+  const comboExplicitMs = isRecord(config) ? normalizePositiveTimeoutMs(config.targetTimeoutMs) : 0;
+  if (comboExplicitMs > 0) return clamp(comboExplicitMs);
+
+  // 3. Per-provider fail-fast default.
+  const providerDefaultMs = provider
+    ? normalizePositiveTimeoutMs(PROVIDER_TARGET_TIMEOUT_DEFAULTS_MS[provider] ?? 0)
+    : 0;
+  const genericDefaultMs = normalizePositiveTimeoutMs(defaultTimeoutMs);
+
+  const baseMs = providerDefaultMs > 0 ? providerDefaultMs : genericDefaultMs;
+  if (baseMs <= 0) return ceilingTimeoutMs <= 0 ? 0 : ceilingTimeoutMs;
+  return clamp(baseMs);
 }
 
 /**
