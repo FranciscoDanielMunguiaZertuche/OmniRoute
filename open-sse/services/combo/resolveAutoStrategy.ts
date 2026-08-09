@@ -399,6 +399,13 @@ export async function resolveAutoStrategyOrder(
     // routable). Re-route to the best-fit candidate instead of silently
     // downgrading quality; the downstream target-matching below picks the
     // matching target, or the best-ranked target as a last resort.
+    // The SAME floor then reorders the scored fallback tail (below), so the
+    // retry loop cannot serve a low-fitness model while a high-fitness one is
+    // routable — the initial selection is only the first target of many.
+    let qualityFloor: {
+      floor: number;
+      best: { candidate: AutoProviderCandidate; fit: number };
+    } | null = null;
     if (weights.taskFit >= 0.25) {
       const poolFit = routableCandidates
         .map((candidate) => ({
@@ -408,6 +415,7 @@ export async function resolveAutoStrategyOrder(
         .sort((a, b) => b.fit - a.fit);
       const bestFit = poolFit[0];
       if (bestFit && bestFit.fit >= 0.7) {
+        qualityFloor = { floor: bestFit.fit - AUTO_QUALITY_FLOOR_GAP, best: bestFit };
         const selectedFit = getTaskFitness(selectedModel || "", taskType);
         if (selectedFit > 0 && bestFit.fit - selectedFit > AUTO_QUALITY_FLOOR_GAP) {
           log.warn(
@@ -441,7 +449,7 @@ export async function resolveAutoStrategyOrder(
       weights,
       autoManifestHint
     );
-    const rankedTargets = scoredTargets.map((entry) => entry.target);
+    let rankedTargets = scoredTargets.map((entry) => entry.target);
     const selectedTarget =
       scoredTargets.find((entry) => {
         const parsed = parseModel(entry.target.modelStr);
@@ -467,6 +475,45 @@ export async function resolveAutoStrategyOrder(
     // routable ranked ones (and, when the cutoff is OFF, makes this identical to
     // the pre-cutoff behavior), but a quota-blocked target still survives as a
     // final fallback instead of vanishing — the hard cutoff only de-prioritizes.
+    //
+    // Quality-floor fallback guard (combo-hang fix part 2): scoreAutoTargets
+    // ranks the retry tail by health/latency/cost-weighted score, which can place
+    // a low-fitness model (llama-3.1-8b, 0.55) ABOVE a high-fitness one
+    // (deepseek-v4-flash-free, 0.74) when the selected target fails. That made
+    // the guard above a no-op for every attempt after the first — the loop
+    // silently served the downgrade. Partition the ranked tail so every target
+    // whose KNOWN task fitness is below the floor is excluded from the pool
+    // entirely while at least one at-or-above-floor target remains; the operator
+    // asked for a quality floor, so the correct outcome for an all-above-floor
+    // failure is an error, not a silent downgrade to llama-3.1-8b.
+    if (qualityFloor) {
+      const { floor } = qualityFloor;
+      const atOrAboveFloor: ResolvedComboTarget[] = [];
+      const belowFloor: ResolvedComboTarget[] = [];
+      for (const target of rankedTargets) {
+        const parsed = parseModel(target.modelStr);
+        const fit = getTaskFitness(parsed.model || target.modelStr, taskType);
+        if (fit > 0 && fit < floor) belowFloor.push(target);
+        else atOrAboveFloor.push(target);
+      }
+      if (belowFloor.length > 0 && atOrAboveFloor.length > 0) {
+        // Key both on modelStr AND executionKey: rankedTargets carry candidate
+        // executionKeys while eligibleTargets carry combo-resolved ones, so a
+        // key-only filter can miss the duplicate in the tail. modelStr is the
+        // stable identity across both representations.
+        const belowFloorModelStrs = new Set(belowFloor.map((t) => t.modelStr));
+        const belowFloorKeys = new Set(belowFloor.map((t) => t.executionKey));
+        log.warn(
+          "COMBO",
+          `Auto ${combo.name} quality-floor guard: ${belowFloor.length} below-floor fallback targets (floor ${floor.toFixed(2)}) excluded so a low-fitness model can never serve while quality candidates remain`
+        );
+        rankedTargets = atOrAboveFloor;
+        eligibleTargets = eligibleTargets.filter(
+          (t) => !belowFloorModelStrs.has(t.modelStr) && !belowFloorKeys.has(t.executionKey)
+        );
+      }
+    }
+
     orderedTargets = dedupeTargetsByExecutionKey(
       [selectedTarget, ...rankedTargets, ...eligibleTargets].filter(
         (entry): entry is ResolvedComboTarget => entry !== undefined && entry !== null

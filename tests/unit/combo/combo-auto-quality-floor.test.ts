@@ -131,3 +131,25 @@ test("cost-saver auto combo (weights.taskFit < 0.25) does NOT re-route", async (
     `expected llama-3.1-8b-instruct first under cost-saver, got ${result.orderedTargets[0]?.modelStr}`
   );
 });
+
+test("quality-floor guard excludes below-floor targets from the fallback tail", async () => {
+  const result = await resolveAutoStrategyOrder(
+    floorDeps({ modePack: "quality-first", weights: MODE_PACKS["quality-first"] })
+  );
+  assert.ok("orderedTargets" in result, "expected a normal ordering result, not earlyResponse");
+  if (!("orderedTargets" in result)) return;
+
+  // The scored fallback tail (rankedTargets + eligibleTargets) must not contain
+  // the below-floor llama at all once a quality floor is active — otherwise the
+  // retry loop silently serves it after the best-fit candidate fails, which is
+  // exactly the downgrade the selection guard was added to prevent.
+  const ordered = result.orderedTargets.map((t) => t.modelStr).join(",");
+  assert.ok(
+    ordered.includes("deepseek-v4-flash-free"),
+    `expected deepseek-v4-flash-free in ordered targets, got ${ordered}`
+  );
+  assert.ok(
+    !ordered.includes("llama-3.1-8b-instruct"),
+    `expected below-floor llama to be excluded from the fallback tail, got ${ordered}`
+  );
+});

@@ -2475,6 +2475,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                 //   - no reasoning accumulated
                 //   - no tool_calls (otherwise opencode would run them)
                 //   - completion_tokens < 100 (avoids false-positives on legit short replies)
+                const reasoning = passthroughAccumulatedReasoning.trim();
                 const isTrulyEmpty =
                   !content.trim() && !reasoning.trim() && passthroughToolCalls.size === 0;
                 if (isTrulyEmpty) {
@@ -2498,7 +2499,6 @@ export function createSSEStream(options: StreamOptions = {}) {
                   role: "assistant",
                   content: content || null,
                 };
-                const reasoning = passthroughAccumulatedReasoning.trim();
                 if (reasoning) {
                   message.reasoning_content = reasoning;
                 }
