@@ -92,6 +92,7 @@ export function finalizeStreamRequestLog({
   status,
   error,
   errorCode,
+  videoTranscriptSensitive = false,
   onWarn,
 }: {
   pendingRequestId: string;
@@ -103,6 +104,7 @@ export function finalizeStreamRequestLog({
   status: number;
   error?: string | null;
   errorCode?: string | null;
+  videoTranscriptSensitive?: boolean;
   onWarn?: (error: unknown) => void;
 }) {
   try {
@@ -112,6 +114,7 @@ export function finalizeStreamRequestLog({
       status,
       error: error || null,
       errorCode: errorCode || null,
+      videoTranscriptSensitive,
     });
     if (!completedById) {
       finalizeMostRecentPendingRequest(model, provider, connectionId, {
@@ -120,6 +123,7 @@ export function finalizeStreamRequestLog({
         status,
         error: error || null,
         errorCode: errorCode || null,
+        videoTranscriptSensitive,
       });
     }
   } catch (error) {

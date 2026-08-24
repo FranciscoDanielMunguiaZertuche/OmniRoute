@@ -474,6 +474,8 @@ export async function ensureStreamReadiness(
     provider?: string | null;
     model?: string | null;
     log?: StreamReadinessLogger | null;
+    /** Keep the diagnostic transient while retaining only its existence in logs. */
+    redactUpstreamDiagnosticForLog?: boolean;
   }
 ): Promise<StreamReadinessResult> {
   if (!response.body || options.timeoutMs <= 0) return { ok: true, response };
@@ -568,9 +570,13 @@ export async function ensureStreamReadiness(
         const reason = upstreamDiagnostic
           ? `${classificationReason}: ${upstreamDiagnostic}`
           : classificationReason;
+        const retainedReason =
+          upstreamDiagnostic && options.redactUpstreamDiagnosticForLog
+            ? `${classificationReason}: [upstream diagnostic omitted]`
+            : reason;
         options.log?.warn?.(
           "STREAM",
-          `${reason} (${options.provider || "provider"}/${options.model || "unknown"})`
+          `${retainedReason} (${options.provider || "provider"}/${options.model || "unknown"})`
         );
         return {
           ok: false,

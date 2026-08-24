@@ -11,16 +11,32 @@ export type PendingRequestScope = {
   model: string;
   provider: string;
   connectionId: string | null;
+  videoTranscriptSensitive?: boolean;
+  videoTranscriptDescriptionFingerprints?: readonly string[];
 };
 
 export function updatePendingScope(scope: PendingRequestScope, metadata: PendingRequestMetadata) {
-  if (!updatePendingRequestById(scope.id || null, metadata)) {
-    updatePendingRequest(scope.model, scope.provider, scope.connectionId, metadata);
+  const protectedMetadata = {
+    ...metadata,
+    ...(scope.videoTranscriptSensitive ? { videoTranscriptSensitive: true } : {}),
+    ...(scope.videoTranscriptDescriptionFingerprints?.length
+      ? { videoTranscriptDescriptionFingerprints: scope.videoTranscriptDescriptionFingerprints }
+      : {}),
+  };
+  if (!updatePendingRequestById(scope.id || null, protectedMetadata)) {
+    updatePendingRequest(scope.model, scope.provider, scope.connectionId, protectedMetadata);
   }
 }
 
 export function finalizePendingScope(scope: PendingRequestScope, metadata: PendingRequestMetadata) {
-  if (!finalizePendingRequestById(scope.id, metadata)) {
-    finalizePendingRequest(scope.model, scope.provider, scope.connectionId, metadata);
+  const protectedMetadata = {
+    ...metadata,
+    ...(scope.videoTranscriptSensitive ? { videoTranscriptSensitive: true } : {}),
+    ...(scope.videoTranscriptDescriptionFingerprints?.length
+      ? { videoTranscriptDescriptionFingerprints: scope.videoTranscriptDescriptionFingerprints }
+      : {}),
+  };
+  if (!finalizePendingRequestById(scope.id, protectedMetadata)) {
+    finalizePendingRequest(scope.model, scope.provider, scope.connectionId, protectedMetadata);
   }
 }

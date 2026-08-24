@@ -5,6 +5,10 @@ import {
   getChatLogMaxObjectKeys,
   getChatLogMaxBodyBytes,
 } from "@/lib/logEnv";
+import {
+  omitVideoTranscriptForLog,
+  type VideoTranscriptLogContext,
+} from "@/lib/guardrails/videoTranscriptLogRedaction";
 import { estimateSizeFast } from "../../utils/estimateSize.ts";
 
 export const MEMORY_EXTRACTION_TEXT_LIMIT = 64 * 1024;
@@ -22,7 +26,7 @@ export function truncateChatLogText(value: string): string {
   return `${head}\n[...truncated ${value.length - limit} chars...]\n${tail}`;
 }
 
-export function cloneBoundedChatLogPayload(value: unknown, depth = 0): unknown {
+function cloneBoundedChatLogPayloadValue(value: unknown, depth = 0): unknown {
   if (value === null || value === undefined) return value;
   if (typeof value === "string") return truncateChatLogText(value);
   if (typeof value !== "object") return value;
@@ -32,7 +36,7 @@ export function cloneBoundedChatLogPayload(value: unknown, depth = 0): unknown {
 
   if (Array.isArray(value)) {
     const retained = value.length > maxTailItems ? value.slice(-maxTailItems) : value;
-    const cloned = retained.map((item) => cloneBoundedChatLogPayload(item, depth + 1));
+    const cloned = retained.map((item) => cloneBoundedChatLogPayloadValue(item, depth + 1));
     if (value.length > maxTailItems) {
       return [
         {
@@ -47,15 +51,26 @@ export function cloneBoundedChatLogPayload(value: unknown, depth = 0): unknown {
   }
 
   const result: Record<string, unknown> = {};
-  const entries = Object.entries(value as Record<string, unknown>);
+  const record = value as Record<string, unknown>;
+  const entries = Object.entries(record);
   const maxKeys = getChatLogMaxObjectKeys();
   for (const [key, item] of maxKeys > 0 ? entries.slice(0, maxKeys) : entries) {
-    result[key] = cloneBoundedChatLogPayload(item, depth + 1);
+    result[key] = cloneBoundedChatLogPayloadValue(item, depth + 1);
   }
   if (maxKeys > 0 && entries.length > maxKeys) {
     result._omniroute_truncated_keys = entries.length - maxKeys;
   }
   return result;
+}
+
+export function cloneBoundedChatLogPayload(
+  value: unknown,
+  depth = 0,
+  descriptionContext: VideoTranscriptLogContext | boolean = false
+): unknown {
+  const transcriptSafeValue =
+    depth === 0 ? omitVideoTranscriptForLog(value, descriptionContext) : value;
+  return cloneBoundedChatLogPayloadValue(transcriptSafeValue, depth);
 }
 
 /**

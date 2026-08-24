@@ -4,9 +4,17 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 
+import {
+  extractEmbeddedVideoTranscript,
+  VIDEO_EMBEDDED_SUBTITLE_CODECS,
+  type EmbeddedVideoTranscript,
+  type VideoEmbeddedSubtitleStream,
+} from "./videoBridgeTranscript";
+
 const execFileAsync = promisify(execFile);
 
 export interface VideoCommandOptions {
+  maxBufferBytes?: number;
   timeoutMs: number;
   signal?: AbortSignal;
 }
@@ -57,6 +65,7 @@ export interface VideoProbeMetadata {
   formatName: string;
   height: number;
   streamIndex: number;
+  subtitleStreams: VideoEmbeddedSubtitleStream[];
   width: number;
 }
 
@@ -136,7 +145,7 @@ const SAFE_FORMAT_WHITELIST = [...SAFE_FORMATS].join(",");
 const defaultRunner: VideoCommandRunner = async (executable, args, options) => {
   const result = await execFileAsync(executable, [...args], {
     encoding: "utf8",
-    maxBuffer: 1024 * 1024,
+    maxBuffer: Math.min(1024 * 1024, options.maxBufferBytes ?? 1024 * 1024),
     signal: options.signal,
     timeout: options.timeoutMs,
     windowsHide: true,
@@ -721,7 +730,7 @@ export async function probeLocalVideo(
       "-threads",
       "1",
       "-show_entries",
-      "format=duration,format_name:stream=index,codec_type,width,height:stream_disposition=default,attached_pic",
+      "format=duration,format_name:stream=index,codec_name,codec_type,width,height:stream_disposition=default,attached_pic",
       "-of",
       "json",
       inputPath,
@@ -735,10 +744,12 @@ export async function probeLocalVideo(
   let streamIndex = Number.NaN;
   let allVideoStreamsSafe = false;
   let playableVideoStreamCount = 0;
+  let subtitleStreams: VideoEmbeddedSubtitleStream[] = [];
   try {
     const parsed = JSON.parse(result.stdout) as {
       format?: { duration?: unknown; format_name?: unknown };
       streams?: Array<{
+        codec_name?: unknown;
         codec_type?: unknown;
         disposition?: unknown;
         height?: unknown;
@@ -789,6 +800,23 @@ export async function probeLocalVideo(
       width = Number(selectedStream.width);
       height = Number(selectedStream.height);
     }
+    subtitleStreams = (parsed.streams ?? [])
+      .filter(
+        (stream) =>
+          stream.codec_type === "subtitle" &&
+          typeof stream.codec_name === "string" &&
+          VIDEO_EMBEDDED_SUBTITLE_CODECS.includes(
+            stream.codec_name as (typeof VIDEO_EMBEDDED_SUBTITLE_CODECS)[number]
+          ) &&
+          typeof stream.index === "number" &&
+          Number.isSafeInteger(stream.index) &&
+          stream.index >= 0
+      )
+      .map((stream) => ({
+        codecName: stream.codec_name as (typeof VIDEO_EMBEDDED_SUBTITLE_CODECS)[number],
+        default: dispositionFlag(stream, "default"),
+        streamIndex: stream.index as number,
+      }));
   } catch {
     // The stable error below deliberately excludes raw ffprobe output.
   }
@@ -812,7 +840,7 @@ export async function probeLocalVideo(
   if (!allVideoStreamsSafe) {
     throw new Error("Video stream metadata or dimensions exceed the safe processing limit");
   }
-  return { durationSeconds, formatName, height, streamIndex, width };
+  return { durationSeconds, formatName, height, streamIndex, subtitleStreams, width };
 }
 
 export async function extractFramesFromLocalVideo(
@@ -967,6 +995,7 @@ export async function extractVideoFramesFromBytes(
   }
 ): Promise<{
   durationSeconds: number;
+  embeddedTranscript?: EmbeddedVideoTranscript;
   frames: ExtractedVideoFrame[];
   sampling: VideoSamplingMetadata;
 }> {
@@ -993,9 +1022,19 @@ export async function extractVideoFramesFromBytes(
       streamIndex: metadata.streamIndex,
       timeoutMs: options.timeoutMs,
     });
+    const embeddedTranscript = await extractEmbeddedVideoTranscript(inputPath, {
+      durationSeconds: metadata.durationSeconds,
+      formatWhitelist: SAFE_FORMAT_WHITELIST,
+      runner: (executable, args, commandOptions) =>
+        (options.runner ?? defaultRunner)(executable, args, commandOptions),
+      signal: options.signal,
+      streams: metadata.subtitleStreams,
+      timeoutMs: options.timeoutMs,
+    });
     const frameBytes = await readBoundedExtractedFrames(frameFiles);
     return {
       durationSeconds: metadata.durationSeconds,
+      ...(embeddedTranscript ? { embeddedTranscript } : {}),
       frames: frameFiles.map((frame, index) => ({
         dataUri: `data:image/jpeg;base64,${frameBytes[index].toString("base64")}`,
         timestampSeconds: frame.timestampSeconds,

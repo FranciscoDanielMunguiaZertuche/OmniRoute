@@ -1,4 +1,10 @@
 import { sanitizePII } from "./piiSanitizer";
+import { omitVideoTranscriptForLog } from "./guardrails/videoTranscriptLogRedaction";
+
+export {
+  omitVideoTranscriptForLog,
+  VIDEO_TRANSCRIPT_LOG_OMISSION_MARKER,
+} from "./guardrails/videoTranscriptLogRedaction";
 
 const SENSITIVE_KEYS = new Set([
   "api_key",
@@ -162,7 +168,8 @@ export function sanitizePayloadPII(payload: unknown): unknown {
 export function protectPayloadForLog(payload: unknown): unknown {
   if (payload === null || payload === undefined) return null;
   const normalized = normalizePayloadForLog(payload);
-  const reasoningOmitted = omitEncryptedReasoningForLog(normalized);
+  const transcriptOmitted = omitVideoTranscriptForLog(normalized);
+  const reasoningOmitted = omitEncryptedReasoningForLog(transcriptOmitted);
   const piiSanitized = sanitizePayloadPII(reasoningOmitted);
   return redactPayload(piiSanitized);
 }

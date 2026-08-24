@@ -89,6 +89,94 @@ test("broker client sends only bounded bytes and fixed parameters to the pinned 
   assert.equal(response.frames.length, 2);
 });
 
+test("broker client preserves only validated server-derived embedded transcript metadata", async () => {
+  const fingerprint = "sha256:7082c2d5e6519d1cd51fd438ea77871c966751d4368de055106de5ea4bedbc3b";
+  const response = await extractVideoFramesViaBroker(
+    Buffer.from("safe-video"),
+    { frameCount: 1, timeoutMs: 5_000 },
+    {
+      fetchImpl: async () =>
+        Response.json({
+          durationSeconds: 4,
+          embeddedTranscript: {
+            cues: [
+              {
+                confidence: 1,
+                endSeconds: 2.25,
+                source: "embedded",
+                startSeconds: 1.25,
+                text: "protected broker cue",
+              },
+            ],
+            fingerprint,
+          },
+          frames: [{ timestampSeconds: 2, dataUri: "data:image/jpeg;base64,QQ==" }],
+        }),
+    }
+  );
+
+  assert.deepEqual(response.embeddedTranscript, {
+    cues: [
+      {
+        confidence: 1,
+        endSeconds: 2.25,
+        source: "embedded",
+        startSeconds: 1.25,
+        text: "protected broker cue",
+      },
+    ],
+    fingerprint,
+  });
+});
+
+test("broker client rejects self-asserted or tampered embedded transcript metadata", async () => {
+  const invalidResponses = [
+    {
+      cues: [
+        {
+          confidence: 1,
+          endSeconds: 2,
+          source: "client",
+          startSeconds: 1,
+          text: "caller provenance",
+        },
+      ],
+      fingerprint: `sha256:${"d".repeat(64)}`,
+    },
+    {
+      cues: [
+        {
+          confidence: 1,
+          endSeconds: 2,
+          source: "embedded",
+          startSeconds: 1,
+          text: "tampered fingerprint",
+        },
+      ],
+      fingerprint: `sha256:${"e".repeat(64)}`,
+    },
+  ];
+
+  for (const embeddedTranscript of invalidResponses) {
+    await assert.rejects(
+      () =>
+        extractVideoFramesViaBroker(
+          Buffer.from("safe-video"),
+          { frameCount: 1, timeoutMs: 5_000 },
+          {
+            fetchImpl: async () =>
+              Response.json({
+                durationSeconds: 4,
+                embeddedTranscript,
+                frames: [{ timestampSeconds: 2, dataUri: "data:image/jpeg;base64,QQ==" }],
+              }),
+          }
+        ),
+      /invalid (?:video|embedded) transcript/i
+    );
+  }
+});
+
 test("broker carries the explicit scene-aware policy and preserves effective fallback metadata", async () => {
   let requestedUrl = "";
   const response = await extractVideoFramesViaBroker(

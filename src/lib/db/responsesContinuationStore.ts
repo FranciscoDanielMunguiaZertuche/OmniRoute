@@ -2,23 +2,27 @@
  * responsesContinuationStore.ts — OmniRoute-native `previous_response_id`
  * virtualization for the OpenAI Responses API.
  *
- * Exposes `previous_response_id` continuation to clients unconditionally,
- * regardless of whether the actual upstream provider for a connection
- * supports Responses-API state at all: OmniRoute resolves the response id
- * back to the full input/output it produced and reconstructs the full
- * request server-side before forwarding upstream (full history, exactly as
- * today) -- the client only ever has to resend the new delta.
+ * Exposes `previous_response_id` continuation when a retained Responses
+ * artifact still has the expected top-level input/output array shapes,
+ * regardless of whether the actual upstream provider supports Responses-API
+ * state. OmniRoute resolves the response id back to that retained state and
+ * appends the new delta before forwarding upstream. Privacy-redacted
+ * Video Bridge artifacts deliberately fail closed; those clients must resend
+ * full history instead of relying on an incomplete server-side replay.
  *
- * Storage: reuses the existing call-log pipeline artifact (full, untruncated
- * request/response payloads, already gated by `call_log_pipeline_enabled`
- * and already retained/cleaned up by the existing call-log lifecycle)
- * instead of duplicating conversation content into a second store. Only a
- * lightweight `call_logs.response_id` index (154_call_logs_response_id.sql)
- * is new. Every lookup is scoped by `api_key_id` -- one client can never
- * resolve another client's stored conversation.
+ * Storage: reuses the existing bounded, privacy-filtered call-log pipeline
+ * artifact instead of duplicating conversation content into a second store.
+ * Lookup validates the retained provider-input and client-output array shapes
+ * and explicitly rejects trusted Video-transcript redaction. Other generic
+ * bounded-log truncation markers are not exhaustively classified here. Only a
+ * lightweight `call_logs.response_id` index
+ * (154_call_logs_response_id.sql) is new. Every lookup is scoped by
+ * `api_key_id` -- one client can never resolve another client's stored
+ * conversation.
  */
 
 import { getDbInstance } from "./core";
+import { VIDEO_TRANSCRIPT_REDACTION_PIPELINE_KEY } from "../guardrails/videoTranscriptLogRedaction";
 import { readCallArtifact } from "../usage/callLogArtifacts";
 
 export type ResponsesContinuationState = {
@@ -31,14 +35,14 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Resolve the full input + output a prior Responses API call produced, so
- * the caller can reconstruct `full_input = stored.input + stored.output +
+ * Resolve the retained input + output from a prior Responses API call, so
+ * the caller can reconstruct `next_input = stored.input + stored.output +
  * new_delta`. Returns null on any lookup/read/shape failure (unknown id,
- * wrong tenant, artifact missing, or an artifact whose pipeline payload was
- * size-limit-omitted -- see MAX_CALL_LOG_ARTIFACT_BYTES in
- * callLogArtifacts.ts) so the caller can fail closed and ask the client to
- * resend full history, exactly like a real `previous_response_not_found`
- * from OpenAI itself.
+ * wrong tenant, artifact missing, invalid top-level replay shapes, or trusted
+ * Video-transcript redaction) so the caller can ask the client to resend full
+ * history. Video transcript redaction is identified by a trusted pipeline-level
+ * flag written by the server, never by caller-controlled prose. Generic nested
+ * bounded-log truncation remains an inherited limitation of this shared store.
  */
 export function resolvePreviousResponseState(
   responseId: string,
@@ -69,7 +73,13 @@ export function resolvePreviousResponseState(
 
   const input = isPlainRecord(providerRequest?.body) ? providerRequest.body.input : undefined;
   const output = clientResponse?.output;
-  if (!Array.isArray(input) || !Array.isArray(output)) return null;
+  if (
+    artifact.pipeline[VIDEO_TRANSCRIPT_REDACTION_PIPELINE_KEY] === true ||
+    !Array.isArray(input) ||
+    !Array.isArray(output)
+  ) {
+    return null;
+  }
 
   return { input, output };
 }

@@ -13,6 +13,11 @@ import type {
   VideoSamplingMetadata,
   VideoSamplingPolicy,
 } from "./videoBridgeRuntime";
+import {
+  fingerprintVideoTranscriptCues,
+  normalizeVideoTranscript,
+  type EmbeddedVideoTranscript,
+} from "./videoBridgeTranscript";
 
 export {
   VIDEO_BRIDGE_BROKER_PATH,
@@ -27,6 +32,7 @@ export interface BrokerExtractedFrame {
 
 export interface BrokerExtractionResult {
   durationSeconds: number;
+  embeddedTranscript?: EmbeddedVideoTranscript;
   frames: BrokerExtractedFrame[];
   sampling?: VideoSamplingMetadata;
 }
@@ -119,8 +125,29 @@ function parseBrokerResult(value: unknown, frameCount: number): BrokerExtraction
       ? samplingRecord.policyEffective
       : "uniform";
   const candidateCount = Number(samplingRecord.candidateCount ?? 0);
+  let embeddedTranscript: EmbeddedVideoTranscript | undefined;
+  if (record.embeddedTranscript !== undefined) {
+    const transcript =
+      record.embeddedTranscript && typeof record.embeddedTranscript === "object"
+        ? (record.embeddedTranscript as Record<string, unknown>)
+        : null;
+    if (
+      !transcript ||
+      !Array.isArray(transcript.cues) ||
+      typeof transcript.fingerprint !== "string"
+    ) {
+      throw new Error("Video extraction broker returned an invalid embedded transcript");
+    }
+    const cues = normalizeVideoTranscript({ cues: transcript.cues }, durationSeconds, "embedded");
+    const fingerprint = fingerprintVideoTranscriptCues(cues);
+    if (transcript.fingerprint !== fingerprint) {
+      throw new Error("Video extraction broker returned invalid embedded transcript metadata");
+    }
+    embeddedTranscript = { cues, fingerprint };
+  }
   return {
     durationSeconds,
+    ...(embeddedTranscript ? { embeddedTranscript } : {}),
     frames,
     sampling: {
       candidateCount: Number.isInteger(candidateCount) && candidateCount >= 0 ? candidateCount : 0,

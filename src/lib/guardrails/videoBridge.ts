@@ -44,6 +44,8 @@ import {
   safeSetCacheEntry,
   videoBridgeAbortError,
 } from "./videoBridgeResultCache";
+import { VIDEO_EMBEDDED_TRANSCRIPT_EXTRACTOR_VERSION } from "./videoBridgeTranscript";
+import { fingerprintVideoTranscriptDescription } from "./videoTranscriptLogRedaction";
 import {
   callVisionModel as defaultCallVisionModel,
   type VisionModelConfig,
@@ -157,6 +159,8 @@ interface VideoResultCacheMetadata {
   framesExtracted: number;
   framesUsed: number;
   dedupDropped?: number;
+  embeddedTranscriptCueCount?: number;
+  embeddedTranscriptFingerprint?: string;
   focusStartSeconds?: number;
   focusEndSeconds?: number;
   focusHintFingerprint: string | null;
@@ -215,7 +219,7 @@ function createVideoResultCacheIdentity(
     dedupCandidateFrameCount: resolveVideoDedupCandidateFrameCount(runtime.frameCount),
     dedupPolicyVersion: VIDEO_DEDUP_POLICY_VERSION,
     dedupThreshold: VIDEO_DEDUP_THRESHOLD,
-    extractorVersion: VIDEO_BRIDGE_RESULT_CACHE_VERSION,
+    extractorVersion: VIDEO_EMBEDDED_TRANSCRIPT_EXTRACTOR_VERSION,
     frameCount: runtime.frameCount,
     focusHintFingerprint: analysis.focusHintFingerprint,
     maxVideos: runtime.maxVideos,
@@ -372,6 +376,13 @@ function isVideoResultCacheMetadata(
       record.samplingPolicyRequested === "segment_aware") &&
     (record.transcriptCuesApplied === undefined ||
       isFiniteNonNegativeInteger(record.transcriptCuesApplied)) &&
+    (record.embeddedTranscriptCueCount === undefined ||
+      isFiniteNonNegativeInteger(record.embeddedTranscriptCueCount)) &&
+    (record.embeddedTranscriptFingerprint === undefined ||
+      (typeof record.embeddedTranscriptFingerprint === "string" &&
+        /^sha256:[a-f0-9]{64}$/.test(record.embeddedTranscriptFingerprint))) &&
+    (record.embeddedTranscriptFingerprint === undefined) ===
+      ((record.embeddedTranscriptCueCount ?? 0) === 0) &&
     (record.contactSheetUsed === undefined || typeof record.contactSheetUsed === "boolean") &&
     (record.fusion === undefined || isFusionTelemetry(record.fusion))
   );
@@ -623,6 +634,12 @@ export class VideoBridgeGuardrail extends BaseGuardrail {
                   samplingPolicyRequested:
                     described.sampling?.policyRequested ?? runtime.samplingPolicy,
                   transcriptCuesApplied: described.transcriptCues?.length ?? 0,
+                  embeddedTranscriptCueCount: described.embeddedTranscriptCueCount ?? 0,
+                  ...(described.embeddedTranscriptFingerprint
+                    ? {
+                        embeddedTranscriptFingerprint: described.embeddedTranscriptFingerprint,
+                      }
+                    : {}),
                   contactSheetUsed: described.contactSheetUsed ?? false,
                   ...(described.fusion ? { fusion: described.fusion } : {}),
                 },
@@ -714,6 +731,16 @@ export class VideoBridgeGuardrail extends BaseGuardrail {
     const videosProcessed = attemptedParts.length - failures;
     const videosReplaced = descriptions.filter((description) => description !== null).length;
     if (videosReplaced === 0) return { block: false };
+    const videoTranscriptDescriptionFingerprints = [
+      ...new Set(
+        descriptions
+          .filter(
+            (description): description is string =>
+              typeof description === "string" && description.includes("transcript[source=")
+          )
+          .map(fingerprintVideoTranscriptDescription)
+      ),
+    ].sort();
 
     return {
       block: false,
@@ -731,6 +758,9 @@ export class VideoBridgeGuardrail extends BaseGuardrail {
         focusWindowsApplied,
         focusHintsApplied,
         transcriptCuesApplied,
+        ...(videoTranscriptDescriptionFingerprints.length > 0
+          ? { videoTranscriptDescriptionFingerprints }
+          : {}),
         contactSheetsUsed,
         audioFusionRuns,
         audioFusionPartials,

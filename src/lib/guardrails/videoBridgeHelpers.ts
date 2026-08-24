@@ -16,6 +16,22 @@ import {
   type VideoSamplingMetadata,
   type VideoSamplingPolicy,
 } from "./videoBridgeRuntime";
+import {
+  fingerprintVideoTranscriptCues,
+  mergeVideoTranscriptCues,
+  normalizeVideoTranscript,
+  scopeVideoTranscriptCues,
+  type VideoTranscriptCue,
+} from "./videoBridgeTranscript";
+
+export {
+  mergeVideoTranscriptCues,
+  normalizeVideoTranscript,
+  scopeVideoTranscriptCues,
+  type VideoTranscriptContribution,
+  type VideoTranscriptCue,
+  type VideoTranscriptSource,
+} from "./videoBridgeTranscript";
 
 export const VIDEO_BRIDGE_MAX_BYTES = 50 * 1024 * 1024;
 // Inline base64 shares the public 50 MiB JSON admission budget with model,
@@ -89,94 +105,6 @@ export interface VideoPart {
   transcript?: unknown;
   audioTranscript?: unknown;
   contactSheet?: boolean;
-}
-
-export type VideoTranscriptSource = "audio-bridge" | "client" | "embedded";
-
-export interface VideoTranscriptCue {
-  confidence: number;
-  endSeconds: number;
-  source: VideoTranscriptSource;
-  startSeconds: number;
-  text: string;
-}
-
-const VIDEO_TRANSCRIPT_SOURCES: ReadonlySet<VideoTranscriptSource> = new Set([
-  "audio-bridge",
-  "client",
-  "embedded",
-]);
-
-/** Validate optional transcript metadata without ever invoking a transcription provider. */
-export function normalizeVideoTranscript(
-  value: unknown,
-  durationSeconds: number
-): VideoTranscriptCue[] {
-  if (value === undefined || value === null) return [];
-  const rawCues = Array.isArray(value)
-    ? value
-    : value && typeof value === "object" && Array.isArray((value as Record<string, unknown>).cues)
-      ? (value as Record<string, unknown>).cues
-      : null;
-  if (!rawCues) throw new Error("Invalid video transcript: expected a cues array");
-  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-    throw new Error("Invalid video transcript duration");
-  }
-  const seen = new Set<string>();
-  const normalized: VideoTranscriptCue[] = [];
-  for (const cue of rawCues) {
-    if (!cue || typeof cue !== "object") throw new Error("Invalid video transcript cue");
-    const record = cue as Record<string, unknown>;
-    const text = typeof record.text === "string" ? record.text.trim() : "";
-    const source = record.source;
-    const startSeconds =
-      typeof record.startSeconds === "number"
-        ? record.startSeconds
-        : typeof record.start === "number"
-          ? record.start
-          : Number.NaN;
-    const endSeconds =
-      typeof record.endSeconds === "number"
-        ? record.endSeconds
-        : typeof record.end === "number"
-          ? record.end
-          : Number.NaN;
-    const confidence = record.confidence === undefined ? 1 : record.confidence;
-    if (
-      !text ||
-      typeof source !== "string" ||
-      !VIDEO_TRANSCRIPT_SOURCES.has(source as VideoTranscriptSource)
-    ) {
-      throw new Error("Invalid video transcript source or provenance");
-    }
-    if (
-      !Number.isFinite(startSeconds) ||
-      !Number.isFinite(endSeconds) ||
-      !Number.isFinite(confidence) ||
-      confidence < 0 ||
-      confidence > 1 ||
-      startSeconds < 0 ||
-      endSeconds > durationSeconds ||
-      endSeconds <= startSeconds
-    ) {
-      throw new Error("Invalid video transcript timestamp or confidence range");
-    }
-    const normalizedCue = {
-      confidence,
-      endSeconds,
-      source: source as VideoTranscriptSource,
-      startSeconds,
-      text,
-    } satisfies VideoTranscriptCue;
-    const key = JSON.stringify(normalizedCue);
-    if (!seen.has(key)) {
-      seen.add(key);
-      normalized.push(normalizedCue);
-    }
-  }
-  return normalized.sort(
-    (left, right) => left.startSeconds - right.startSeconds || left.endSeconds - right.endSeconds
-  );
 }
 
 const REPLACEABLE_VIDEO_SHAPES: ReadonlySet<MediaPart["shape"]> = new Set([
@@ -306,6 +234,8 @@ export interface DescribedVideo {
   modelUsed?: string;
   sampling?: VideoSamplingMetadata;
   dedupDropped?: number;
+  embeddedTranscriptCueCount?: number;
+  embeddedTranscriptFingerprint?: string;
   focusWindow?: VideoFocusWindow;
   transcriptCues?: VideoTranscriptCue[];
   contactSheetUsed?: boolean;
@@ -548,7 +478,17 @@ export function composeVideoFramePrompt(
 }
 
 function formatTranscriptCue(cue: VideoTranscriptCue): string {
-  return `transcript[source=${cue.source};confidence=${cue.confidence.toFixed(2)};interval=${formatVideoTimestamp(cue.startSeconds)}-${formatVideoTimestamp(cue.endSeconds)}] ${cue.text}`;
+  const contributingSources = cue.sources?.length ? `;sources=${cue.sources.join("+")}` : "";
+  const contributions = cue.contributions?.length
+    ? `;contributions=${cue.contributions
+        .map(
+          (contribution) =>
+            `${contribution.source}@${formatVideoTimestamp(contribution.startSeconds)}-${formatVideoTimestamp(contribution.endSeconds)}#${contribution.confidence.toFixed(2)}`
+        )
+        .join("+")}`
+    : "";
+  const quotedText = JSON.stringify(cue.text).replace(/\[/g, "\\u005b").replace(/\]/g, "\\u005d");
+  return `transcript[source=${cue.source}${contributingSources}${contributions};confidence=${cue.confidence.toFixed(2)};interval=${formatVideoTimestamp(cue.startSeconds)}-${formatVideoTimestamp(cue.endSeconds)}] text=${quotedText}`;
 }
 
 export async function describeVideoPart(
@@ -603,7 +543,21 @@ export async function describeVideoPart(
     const focusWindow = options.focusWindow
       ? resolveVideoFocusWindow(extracted.durationSeconds, options.focusWindow)
       : null;
-    let transcriptCues = normalizeVideoTranscript(part.transcript, extracted.durationSeconds);
+    const embeddedTranscriptCues = scopeVideoTranscriptCues(
+      normalizeVideoTranscript(
+        extracted.embeddedTranscript?.cues,
+        extracted.durationSeconds,
+        "embedded"
+      ),
+      focusWindow
+    );
+    let transcriptCues = [
+      ...scopeVideoTranscriptCues(
+        normalizeVideoTranscript(part.transcript, extracted.durationSeconds, "client"),
+        focusWindow
+      ),
+      ...embeddedTranscriptCues,
+    ];
     const descriptions: string[] = [];
     for (const frame of framesToCaption) {
       if (signal.aborted) throw new Error("Video Bridge processing timed out or was aborted");
@@ -635,9 +589,13 @@ export async function describeVideoPart(
       // failures.audio recorded), never fail the whole video description.
       const fused = await fuseVideoAndAudio({
         audio: async () => ({
-          observations: normalizeVideoTranscript(
-            part.audioTranscript,
-            extracted.durationSeconds
+          observations: scopeVideoTranscriptCues(
+            normalizeVideoTranscript(
+              part.audioTranscript,
+              extracted.durationSeconds,
+              "audio-bridge"
+            ),
+            focusWindow
           ).map((cue) => ({ ...cue, source: "audio" as const })),
         }),
         signal,
@@ -676,6 +634,7 @@ export async function describeVideoPart(
         })),
       ];
     }
+    transcriptCues = mergeVideoTranscriptCues(transcriptCues);
     const transcriptDescription = transcriptCues.map(formatTranscriptCue).join("; ");
     const focusedMarker = options.analysisMode === "focused" ? " analysis=focused;" : "";
     return {
@@ -685,6 +644,11 @@ export async function describeVideoPart(
       framesRequested: options.frameCount,
       framesUsed: descriptions.length,
       dedupDropped: deduplicated.dropped,
+      embeddedTranscriptCueCount: embeddedTranscriptCues.length || undefined,
+      embeddedTranscriptFingerprint:
+        embeddedTranscriptCues.length > 0
+          ? fingerprintVideoTranscriptCues(embeddedTranscriptCues)
+          : undefined,
       focusWindow: focusWindow ?? undefined,
       sampling: extracted.sampling,
       transcriptCues: transcriptCues.length > 0 ? transcriptCues : undefined,

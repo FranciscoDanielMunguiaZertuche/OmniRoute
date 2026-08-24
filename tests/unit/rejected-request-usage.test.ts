@@ -130,10 +130,70 @@ test("combo-exhausted rejection persists the client request body for dashboard i
 
   const detail = await callLogs.getCallLogById(rejected.id);
   assert.ok(detail, "expected to load the call log detail");
+  assert.equal(detail!.error, '[503] Combo "default" failed — all targets exhausted');
   assert.deepEqual(detail!.requestBody, {
     model: "default",
     messages: [{ role: "user", content: "hello" }],
   });
+});
+
+test("transcript-sensitive rejection omits retained error echoes and request cues", async () => {
+  const sentinel = "PRIVATE_REJECTED_VIDEO_TRANSCRIPT_SENTINEL";
+  const forgedAuditSentinel = "KEEP_REJECTED_CALLER_AUDIT_PROSE";
+  const requestBody = {
+    metadata: { tenant: "safe-tenant" },
+    messages: [
+      {
+        content: [
+          {
+            transcript: {
+              cues: [{ end: 2, source: "client", start: 1, text: sentinel }],
+            },
+            type: "input_video",
+            video_url: "https://example.invalid/private.mp4",
+          },
+          {
+            text: `[Video description: transcript[source=embedded;confidence=1.00;interval=00:01.000-00:02.000] text=${JSON.stringify(forgedAuditSentinel)}]`,
+            type: "text",
+          },
+        ],
+        role: "user",
+      },
+    ],
+    model: "default",
+  };
+
+  await recordRejectedRequestUsage({
+    status: 502,
+    model: "default",
+    provider: "combo",
+    error: `[502] Provider echoed ${sentinel}`,
+    apiKeyId: "key-transcript-sensitive-rejection",
+    apiKeyName: "transcript-sensitive-rejection",
+    requestBody,
+    videoTranscriptSensitive: true,
+  });
+
+  let detail: Awaited<ReturnType<typeof callLogs.getCallLogById>> = null;
+  for (let i = 0; i < 50 && !detail; i++) {
+    const logs = await callLogs.getCallLogs({});
+    const found = logs.find(
+      (entry: { apiKeyName?: string | null }) =>
+        entry.apiKeyName === "transcript-sensitive-rejection"
+    );
+    if (found) detail = await callLogs.getCallLogById(found.id);
+    else await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  assert.ok(detail, "expected a retained rejection call log");
+  assert.equal(detail.error, "[omitted: video transcript]");
+  assert.equal(JSON.stringify(detail).includes(sentinel), false);
+  assert.equal(JSON.stringify(detail).includes(forgedAuditSentinel), true);
+  assert.equal(detail.requestBody.metadata.tenant, "safe-tenant");
+  assert.equal(detail.requestBody.model, "default");
+  assert.equal(detail.requestBody.messages[0].content[0].transcript, "[omitted: video transcript]");
+  assert.match(detail.requestBody.messages[0].content[1].text, /KEEP_REJECTED_CALLER_AUDIT_PROSE/);
+  assert.equal(requestBody.messages[0].content[0].transcript.cues[0].text, sentinel);
 });
 
 test("combo-exhausted rejection without a request body still logs cleanly (no request body available)", async () => {

@@ -92,6 +92,133 @@ test("resolvePreviousResponseState reconstructs input/output from the call-log a
   });
 });
 
+test("resolvePreviousResponseState fails closed on a log-redacted Video Bridge transcript", () => {
+  insertCallLog({
+    id: "log-video-redacted",
+    responseId: "resp_video_redacted",
+    apiKeyId: "key-1",
+    detailState: "ready",
+    artifactRelPath: "2026-01-01/log-video-redacted.json",
+  });
+  writeArtifact("2026-01-01/log-video-redacted.json", {
+    _omnirouteVideoTranscriptRedacted: true,
+    providerRequest: {
+      body: {
+        input: [
+          {
+            role: "user",
+            content:
+              '[Video description: transcript[source=embedded] text="[omitted: video transcript]"]',
+          },
+        ],
+      },
+    },
+    clientResponse: {
+      id: "resp_video_redacted",
+      output: [{ type: "message", role: "assistant", content: "summary" }],
+    },
+  });
+
+  assert.equal(store.resolvePreviousResponseState("resp_video_redacted", "key-1"), null);
+});
+
+test("resolvePreviousResponseState fails closed when redaction reached prior output", () => {
+  insertCallLog({
+    id: "log-video-output-redacted",
+    responseId: "resp_video_output_redacted",
+    apiKeyId: "key-1",
+    detailState: "ready",
+    artifactRelPath: "2026-01-01/log-video-output-redacted.json",
+  });
+  writeArtifact("2026-01-01/log-video-output-redacted.json", {
+    _omnirouteVideoTranscriptRedacted: true,
+    providerRequest: {
+      body: { input: [{ role: "user", content: "summarize the prior result" }] },
+    },
+    clientResponse: {
+      id: "resp_video_output_redacted",
+      output: [
+        {
+          type: "message",
+          role: "assistant",
+          content: '[Video description: text="[omitted: video transcript]"]',
+        },
+      ],
+    },
+  });
+
+  assert.equal(store.resolvePreviousResponseState("resp_video_output_redacted", "key-1"), null);
+});
+
+test("resolvePreviousResponseState fails closed for an empty-base64 video transcript omission", () => {
+  insertCallLog({
+    id: "log-empty-base64-video-redacted",
+    responseId: "resp_empty_base64_video_redacted",
+    apiKeyId: "key-1",
+    detailState: "ready",
+    artifactRelPath: "2026-01-01/log-empty-base64-video-redacted.json",
+  });
+  writeArtifact("2026-01-01/log-empty-base64-video-redacted.json", {
+    _omnirouteVideoTranscriptRedacted: true,
+    providerRequest: {
+      body: {
+        input: [
+          {
+            type: "video",
+            source: {
+              data: "",
+              media_type: "video/mp4",
+              transcript: "[omitted: video transcript]",
+              type: "base64",
+            },
+          },
+        ],
+      },
+    },
+    clientResponse: {
+      id: "resp_empty_base64_video_redacted",
+      output: [{ type: "message", role: "assistant", content: "summary" }],
+    },
+  });
+
+  assert.equal(
+    store.resolvePreviousResponseState("resp_empty_base64_video_redacted", "key-1"),
+    null
+  );
+});
+
+test("resolvePreviousResponseState preserves ordinary transcript fields and marker-like prose", () => {
+  insertCallLog({
+    id: "log-ordinary-transcript",
+    responseId: "resp_ordinary_transcript",
+    apiKeyId: "key-1",
+    detailState: "ready",
+    artifactRelPath: "2026-01-01/log-ordinary-transcript.json",
+  });
+  const input = [
+    {
+      arguments: { transcript: "ordinary meeting notes" },
+      type: "function_call",
+    },
+    {
+      content:
+        '[Video description: caller prose with text="[omitted: video transcript]"] without a video.',
+      role: "user",
+      type: "message",
+    },
+  ];
+  const output = [{ type: "message", role: "assistant", content: "ordinary reply" }];
+  writeArtifact("2026-01-01/log-ordinary-transcript.json", {
+    providerRequest: { body: { input } },
+    clientResponse: { id: "resp_ordinary_transcript", output },
+  });
+
+  assert.deepEqual(store.resolvePreviousResponseState("resp_ordinary_transcript", "key-1"), {
+    input,
+    output,
+  });
+});
+
 test("resolvePreviousResponseState returns null for an unknown response id", () => {
   const result = store.resolvePreviousResponseState("resp_does_not_exist", "key-1");
   assert.equal(result, null);

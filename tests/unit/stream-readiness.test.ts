@@ -616,10 +616,7 @@ test("ensureStreamReadiness preserves sanitized error-only diagnostics on early 
   assert.equal(result.response.status, 502);
   assert.equal(result.code, "STREAM_EARLY_EOF");
   assert.equal(result.type, "stream_early_eof");
-  assert.equal(
-    result.classificationReason,
-    "Stream ended before producing a non-ping SSE event"
-  );
+  assert.equal(result.classificationReason, "Stream ended before producing a non-ping SSE event");
   assert.equal(
     result.upstreamDiagnostic,
     "UPSTREAM_DETAIL quota exhausted; retry after 2s; empty content Bearer [REDACTED] <path>"
@@ -636,17 +633,36 @@ test("ensureStreamReadiness preserves sanitized error-only diagnostics on early 
   assert.equal(body.upstream_details.error.message, result.upstreamDiagnostic);
   assert.equal(warnings.length, 1);
 
-  for (const surfaced of [
-    result.reason,
-    body.upstream_details.error.message,
-    warnings[0],
-  ]) {
+  for (const surfaced of [result.reason, body.upstream_details.error.message, warnings[0]]) {
     assert.match(surfaced, /UPSTREAM_DETAIL/);
-    assert.doesNotMatch(
-      surfaced,
-      /SECOND_DETAIL|TOP_SECRET|\/srv\/omniroute\/handler\.ts/
-    );
+    assert.doesNotMatch(surfaced, /SECOND_DETAIL|TOP_SECRET|\/srv\/omniroute\/handler\.ts/);
   }
+});
+
+test("ensureStreamReadiness omits sensitive upstream diagnostics from retained logs", async () => {
+  const rawCue = "PRIVATE_STREAM_READINESS_VIDEO_TRANSCRIPT_SENTINEL";
+  const warnings: string[] = [];
+  const response = new Response(
+    streamFromChunks([`data: ${JSON.stringify({ error: { message: rawCue } })}\n\n`]),
+    { status: 200, headers: { "Content-Type": "text/event-stream" } }
+  );
+
+  const result = await ensureStreamReadiness(response, {
+    timeoutMs: 100,
+    provider: "test-provider",
+    model: "test-model",
+    redactUpstreamDiagnosticForLog: true,
+    log: {
+      warn: (_tag, message) => warnings.push(message),
+    },
+  });
+
+  assert.equal(result.ok, false);
+  if (result.ok) assert.fail("error-only SSE payload must remain a readiness failure");
+  assert.match(result.reason, new RegExp(rawCue));
+  assert.equal(warnings.length, 1);
+  assert.doesNotMatch(warnings[0], new RegExp(rawCue));
+  assert.match(warnings[0], /upstream diagnostic omitted/);
 });
 
 test("stream-readiness diagnostics cannot reclassify Antigravity account exhaustion (#8972)", () => {

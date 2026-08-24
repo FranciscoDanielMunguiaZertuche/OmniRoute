@@ -18,6 +18,10 @@
  * never turn into a second failure on the response path.
  */
 import { saveCallLog, saveRequestUsage } from "@/lib/usageDb";
+import {
+  omitVideoTranscriptForLog,
+  VIDEO_TRANSCRIPT_LOG_OMISSION_MARKER,
+} from "@/lib/guardrails/videoTranscriptLogRedaction";
 
 export interface RejectedRequestUsageInput {
   status: number;
@@ -44,6 +48,8 @@ export interface RejectedRequestUsageInput {
    * dashboard log detail had no request to inspect — see #7360 follow-up.
    */
   requestBody?: unknown;
+  /** Trusted request-scoped signal; raw text remains available to routing before this boundary. */
+  videoTranscriptSensitive?: boolean;
 }
 
 export async function recordRejectedRequestUsage(input: RejectedRequestUsageInput): Promise<void> {
@@ -64,10 +70,17 @@ export async function recordRejectedRequestUsage(input: RejectedRequestUsageInpu
     connectionId = undefined,
     startTime,
     requestBody = null,
+    videoTranscriptSensitive = false,
   } = input;
 
   const now = Date.now();
   const duration = typeof startTime === "number" ? now - startTime : 0;
+  const retainedError = videoTranscriptSensitive
+    ? VIDEO_TRANSCRIPT_LOG_OMISSION_MARKER
+    : error || null;
+  const retainedRequestBody = videoTranscriptSensitive
+    ? omitVideoTranscriptForLog(requestBody)
+    : requestBody;
 
   // 1. call_logs — preserves /dashboard/logs visibility (unchanged behavior).
   await saveCallLog({
@@ -81,8 +94,8 @@ export async function recordRejectedRequestUsage(input: RejectedRequestUsageInpu
     connectionId,
     duration,
     tokens: {},
-    error: error || null,
-    requestBody,
+    error: retainedError,
+    requestBody: retainedRequestBody,
     comboName,
     comboStepId,
     comboExecutionKey,

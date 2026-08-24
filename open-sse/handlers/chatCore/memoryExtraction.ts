@@ -1,5 +1,10 @@
 import { capMemoryExtractionText, MEMORY_EXTRACTION_TEXT_LIMIT } from "./logTruncation.ts";
 
+function normalizeMemoryInputText(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.trim();
+}
+
 export function extractMemoryTextFromResponse(
   response: Record<string, unknown> | null | undefined
 ): string {
@@ -29,8 +34,13 @@ export function extractMemoryTextFromResponse(
 }
 
 export function extractMemoryTextFromRequestBody(
-  body: Record<string, unknown> | null | undefined
+  body: Record<string, unknown> | null | undefined,
+  videoTranscriptSensitive = false
 ): string {
+  // This bit is derived from the guardrail result. Caller-shaped lookalike text
+  // cannot suppress Memory extraction, while real media-derived cues cannot
+  // become durable facts (including through an adjacent response echo).
+  if (videoTranscriptSensitive) return "";
   if (!body || typeof body !== "object") return "";
 
   const messages = Array.isArray(body.messages) ? body.messages : null;
@@ -39,16 +49,16 @@ export function extractMemoryTextFromRequestBody(
       const msg = messages[i] as Record<string, unknown>;
       if (msg?.role !== "user") continue;
 
-      if (typeof msg.content === "string" && msg.content.trim().length > 0) {
-        return capMemoryExtractionText(msg.content.trim());
+      const messageText = normalizeMemoryInputText(msg.content);
+      if (messageText) {
+        return capMemoryExtractionText(messageText);
       }
 
       if (Array.isArray(msg.content)) {
         const text = msg.content
           .map((part: Record<string, unknown>) => {
-            if (typeof part?.text === "string") return part.text.trim();
-            if (part?.type === "input_text" && typeof part?.text === "string")
-              return part.text.trim();
+            if (typeof part?.text === "string") return normalizeMemoryInputText(part.text);
+            if (part?.type === "input_text") return normalizeMemoryInputText(part.text);
             return "";
           })
           .filter(Boolean)
@@ -68,15 +78,15 @@ export function extractMemoryTextFromRequestBody(
       if (role && role !== "user") continue;
       if (itemType && itemType !== "message") continue;
 
-      if (typeof item?.content === "string" && item.content.trim()) {
-        return capMemoryExtractionText(item.content.trim());
+      const itemText = normalizeMemoryInputText(item?.content);
+      if (itemText) {
+        return capMemoryExtractionText(itemText);
       }
       if (Array.isArray(item?.content)) {
         const text = item.content
           .map((part: Record<string, unknown>) => {
-            if (typeof part?.text === "string") return part.text.trim();
-            if (part?.type === "input_text" && typeof part?.text === "string")
-              return part.text.trim();
+            if (typeof part?.text === "string") return normalizeMemoryInputText(part.text);
+            if (part?.type === "input_text") return normalizeMemoryInputText(part.text);
             return "";
           })
           .filter(Boolean)
@@ -96,13 +106,12 @@ export function extractMemoryTextFromRequestBody(
         if (role && role !== "user") return "";
         if (itemType && itemType !== "message") return "";
 
-        if (typeof item?.content === "string") return item.content.trim();
+        if (typeof item?.content === "string") return normalizeMemoryInputText(item.content);
         if (Array.isArray(item?.content)) {
           return item.content
             .map((part: Record<string, unknown>) => {
-              if (typeof part?.text === "string") return part.text.trim();
-              if (part?.type === "input_text" && typeof part?.text === "string")
-                return part.text.trim();
+              if (typeof part?.text === "string") return normalizeMemoryInputText(part.text);
+              if (part?.type === "input_text") return normalizeMemoryInputText(part.text);
               return "";
             })
             .filter(Boolean)

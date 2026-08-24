@@ -14,6 +14,9 @@ const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "omni-attempt-logging-
 process.env.DATA_DIR = testDataDir;
 
 const coreDb = await import("../../src/lib/db/core.ts");
+const eventBus = await import("../../src/lib/events/eventBus.ts");
+const { fingerprintVideoTranscriptDescription } =
+  await import("../../src/lib/guardrails/videoTranscriptLogRedaction.ts");
 const { getCallLogById } = await import("../../src/lib/usage/callLogs.ts");
 const { persistAttemptLogs } = await import("../../open-sse/handlers/chatCore/attemptLogging.ts");
 
@@ -48,6 +51,7 @@ function baseCtx(overrides: Record<string, unknown> = {}) {
     tokensCompressed: 0,
     apiKeyInfo: { id: "key-1", name: "Key One" },
     noLogEnabled: false,
+    videoTranscriptSensitive: false,
     ...overrides,
   } as Parameters<typeof persistAttemptLogs>[1];
 }
@@ -135,4 +139,76 @@ test("connectionId falls back to credentials.connectionId when null, and error i
   assert.equal(row.connectionId, "cred-conn");
   assert.equal(row.status, 502);
   assert.match(String(row.error ?? ""), /upstream boom/);
+});
+
+test("omits non-stream response echoes for a transcript-sensitive attempt", async () => {
+  const id = "attempt-video-transcript-sensitive-1";
+  const traceId = "trace-video-transcript-sensitive-1";
+  const rawCue = "private attempt-log subtitle echo sentinel";
+  const description = `[Video description: transcript[source=embedded] text=${JSON.stringify(rawCue)}]`;
+  persistAttemptLogs(
+    {
+      status: 502,
+      error: `upstream echoed ${rawCue}`,
+      responseBody: { choices: [{ message: { content: rawCue } }] },
+      providerResponse: {
+        choices: [{ message: { content: rawCue } }],
+        warning: `safety filter echoed ${rawCue}`,
+      },
+      clientResponse: { choices: [{ message: { content: rawCue } }] },
+    },
+    baseCtx({
+      detailedLoggingEnabled: true,
+      pendingRequestId: id,
+      skillRequestId: "skill-video-transcript-sensitive",
+      traceId,
+      body: {
+        messages: [
+          {
+            role: "user",
+            content: description,
+          },
+        ],
+      },
+      reqLogger: {
+        getPipelinePayloads: () => ({}),
+        isVideoTranscriptSensitive: () => true,
+      },
+      videoTranscriptDescriptionFingerprints: [fingerprintVideoTranscriptDescription(description)],
+      videoTranscriptSensitive: true,
+    })
+  );
+
+  const row = await pollForCallLog(id);
+  assert.ok(row);
+  const serialized = JSON.stringify({
+    error: row.error,
+    pipelinePayloads: row.pipelinePayloads,
+    responseBody: row.responseBody,
+  });
+  assert.equal(serialized.includes(rawCue), false);
+  assert.match(serialized, /omitted: video transcript/);
+
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const lifecycle = eventBus
+    .getEventHistory(undefined, 100)
+    .find(
+      (entry) =>
+        entry.event === "request.failed" &&
+        (entry.payload as { id?: unknown } | undefined)?.id === traceId
+    );
+  assert.ok(lifecycle, "request.failed must be retained for dashboard lifecycle cleanup");
+  const lifecyclePayload = JSON.stringify(lifecycle.payload);
+  assert.equal(lifecyclePayload.includes(rawCue), false);
+  assert.match(lifecyclePayload, /omitted: video transcript/);
+
+  const auditRow = coreDb
+    .getDbInstance()
+    .prepare(
+      "SELECT details FROM audit_log WHERE action = 'provider.warning' AND request_id = ? ORDER BY id DESC LIMIT 1"
+    )
+    .get("skill-video-transcript-sensitive") as { details?: string } | undefined;
+  assert.ok(auditRow, "provider.warning existence must survive transcript redaction");
+  assert.equal(String(auditRow.details).includes(rawCue), false);
+  assert.match(String(auditRow.details), /omitted: video transcript/);
 });

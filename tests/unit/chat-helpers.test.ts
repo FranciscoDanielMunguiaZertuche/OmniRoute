@@ -6,7 +6,10 @@ import path from "node:path";
 import net from "node:net";
 
 const TEST_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-chat-helpers-"));
+const TEST_APP_LOG_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-chat-helpers-log-"));
+const TEST_APP_LOG_PATH = path.join(TEST_APP_LOG_DIR, "app.log");
 process.env.DATA_DIR = TEST_DATA_DIR;
+process.env.APP_LOG_FILE_PATH = TEST_APP_LOG_PATH;
 
 const core = await import("../../src/lib/db/core.ts");
 const providersDb = await import("../../src/lib/db/providers.ts");
@@ -22,6 +25,7 @@ const {
 } = await import("../../src/sse/handlers/chatHelpers.ts");
 const { getCircuitBreaker, resetAllCircuitBreakers, STATE } =
   await import("../../src/shared/utils/circuitBreaker.ts");
+const proxyLogger = await import("../../src/lib/proxyLogger.ts");
 // DATA_DIR must be fixed before these modules load; keep this test seam dynamic.
 const { setTlsClientForTest } = await import("../../open-sse/utils/proxyFetch.ts");
 
@@ -30,6 +34,21 @@ async function resetStorage() {
   core.resetDbInstance();
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
   fs.mkdirSync(TEST_DATA_DIR, { recursive: true });
+}
+
+async function readAppLogWhen(
+  predicate: (contents: string) => boolean,
+  timeoutMs = 4_000
+): Promise<string> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const contents = fs.existsSync(TEST_APP_LOG_PATH)
+      ? fs.readFileSync(TEST_APP_LOG_PATH, "utf8")
+      : "";
+    if (predicate(contents)) return contents;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return fs.existsSync(TEST_APP_LOG_PATH) ? fs.readFileSync(TEST_APP_LOG_PATH, "utf8") : "";
 }
 
 async function seedConnection(provider, overrides = {}) {
@@ -420,6 +439,41 @@ test("handleNoCredentials returns Retry-After when every account is rate limited
   assert.match(json.error.message, /\[openai\/gpt-4o-mini\] Quota exceeded/);
 });
 
+test("handleNoCredentials omits transcript-sensitive upstream text from application logs", async () => {
+  const rawCue = "PRIVATE_NO_CREDENTIALS_VIDEO_TRANSCRIPT_SENTINEL";
+  const provider = `fu05-${Math.random().toString(16).slice(2)}`;
+
+  const response = handleNoCredentials(
+    {
+      allRateLimited: true,
+      retryAfter: new Date(Date.now() + 30_000).toISOString(),
+      retryAfterHuman: "reset after 30s",
+      lastErrorCode: 429,
+    },
+    "conn_video_transcript",
+    provider,
+    "fixture-model",
+    rawCue,
+    429,
+    undefined,
+    false,
+    true
+  );
+
+  const body = (await response.json()) as { error?: { message?: string } };
+  assert.match(body.error?.message ?? "", new RegExp(rawCue));
+
+  const contents = await readAppLogWhen(
+    (value) => value.includes(provider) && value.includes("omitted: video transcript")
+  );
+  const matchingLines = contents
+    .split("\n")
+    .filter((line) => line.includes(provider))
+    .join("\n");
+  assert.doesNotMatch(matchingLines, new RegExp(rawCue));
+  assert.match(matchingLines, /omitted: video transcript/);
+});
+
 test("handleNoCredentials returns structured model_cooldown when every credential for the model is cooling down", async () => {
   const retryAfter = new Date(Date.now() + 12_000).toISOString();
   const response = handleNoCredentials(
@@ -672,6 +726,29 @@ test("safeLogEvents tolerates success and timeout payloads", () => {
     clientRawRequest: { endpoint: "/v1/chat/completions" },
     tlsFingerprintUsed: true,
   });
+});
+
+test("safeLogEvents omits failure text for transcript-sensitive requests", async () => {
+  const rawCue = "PRIVATE_PROXY_LOG_VIDEO_TRANSCRIPT_SENTINEL";
+  const provider = "fu05-transcript-sensitive";
+  await safeLogEvents({
+    result: { success: false, status: 502, error: rawCue },
+    proxyInfo: { proxy: null, level: "direct", levelId: null },
+    proxyLatency: 25,
+    provider,
+    model: "fixture-model",
+    sourceFormat: "openai-chat",
+    targetFormat: "openai-chat",
+    credentials: { connectionId: "conn-video-transcript" },
+    comboName: null,
+    clientRawRequest: { endpoint: "/v1/chat/completions" },
+    videoTranscriptSensitive: true,
+  });
+
+  const entry = proxyLogger.getProxyLogs({ provider, limit: 1 })[0];
+  assert.ok(entry);
+  assert.equal(String(entry.error).includes(rawCue), false);
+  assert.match(String(entry.error), /omitted: video transcript/);
 });
 
 test("withSessionHeader adds headers to mutable and immutable responses", async () => {

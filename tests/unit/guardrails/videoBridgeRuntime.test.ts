@@ -67,7 +67,7 @@ test("probes and extracts a local video using shell-free bounded commands", asyn
   assert.ok(calls[0].args.includes("-format_whitelist"));
   assert.equal(
     calls[0].args[calls[0].args.indexOf("-show_entries") + 1],
-    "format=duration,format_name:stream=index,codec_type,width,height:stream_disposition=default,attached_pic"
+    "format=duration,format_name:stream=index,codec_name,codec_type,width,height:stream_disposition=default,attached_pic"
   );
   assert.equal(
     calls.slice(1).every((call) => call.executable === "ffmpeg"),

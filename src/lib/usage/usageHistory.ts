@@ -8,6 +8,11 @@
  */
 
 import { getDbInstance } from "../db/core";
+import {
+  omitVideoTranscriptForLog,
+  type VideoTranscriptLogContext,
+  VIDEO_TRANSCRIPT_LOG_OMISSION_MARKER,
+} from "../guardrails/videoTranscriptLogRedaction";
 import { protectPayloadForLog } from "../logPayloads";
 import {
   resolveOrphanedUsageAccountIdentity,
@@ -55,6 +60,10 @@ export type PendingRequestMetadata = {
   stageUpdatedAt?: number | null;
   correlationId?: string | null;
   sessionTag?: string | null;
+  /** Trusted request state; consumed during normalization and never retained. */
+  videoTranscriptSensitive?: boolean;
+  /** Exact SHA-256 identities of generated Video descriptions; never retained. */
+  videoTranscriptDescriptionFingerprints?: readonly string[];
 };
 export type PendingRequestDetail = {
   id: string;
@@ -88,6 +97,17 @@ function normalizePendingMetadata(metadata?: PendingRequestMetadata): PendingReq
   if (!metadata) return {};
 
   const normalized: PendingRequestMetadata = {};
+  const transcriptSensitive = metadata.videoTranscriptSensitive === true;
+  const descriptionContext: VideoTranscriptLogContext = {
+    trustedDescriptionFingerprints: metadata.videoTranscriptDescriptionFingerprints ?? [],
+  };
+  const protectRequest = (
+    value: unknown,
+    logContext: VideoTranscriptLogContext | boolean = false
+  ): unknown =>
+    truncatePendingPreview(protectPayloadForLog(omitVideoTranscriptForLog(value, logContext)));
+  const protectResponse = (value: unknown): unknown =>
+    transcriptSensitive ? VIDEO_TRANSCRIPT_LOG_OMISSION_MARKER : protectRequest(value);
 
   if (metadata.clientEndpoint !== undefined) {
     normalized.clientEndpoint = toStringOrNull(metadata.clientEndpoint) || null;
@@ -106,29 +126,25 @@ function normalizePendingMetadata(metadata?: PendingRequestMetadata): PendingReq
         : null;
   }
   if (metadata.clientRequest !== undefined) {
-    normalized.clientRequest = truncatePendingPreview(protectPayloadForLog(metadata.clientRequest));
+    normalized.clientRequest = protectRequest(metadata.clientRequest, false);
   }
   if (metadata.providerRequest !== undefined) {
-    normalized.providerRequest = truncatePendingPreview(
-      protectPayloadForLog(metadata.providerRequest)
-    );
+    normalized.providerRequest = protectRequest(metadata.providerRequest, descriptionContext);
   }
   if (metadata.providerResponse !== undefined) {
-    normalized.providerResponse = truncatePendingPreview(
-      protectPayloadForLog(metadata.providerResponse)
-    );
+    normalized.providerResponse = protectResponse(metadata.providerResponse);
   }
   if (metadata.clientResponse !== undefined) {
-    normalized.clientResponse = truncatePendingPreview(
-      protectPayloadForLog(metadata.clientResponse)
-    );
+    normalized.clientResponse = protectResponse(metadata.clientResponse);
   }
   if (metadata.status !== undefined) {
     const status = Number(metadata.status);
     normalized.status = Number.isFinite(status) ? status : null;
   }
   if (metadata.error !== undefined) {
-    normalized.error = toStringOrNull(metadata.error) || null;
+    normalized.error = transcriptSensitive
+      ? VIDEO_TRANSCRIPT_LOG_OMISSION_MARKER
+      : toStringOrNull(metadata.error) || null;
   }
   if (metadata.errorCode !== undefined) {
     normalized.errorCode = toStringOrNull(metadata.errorCode) || null;

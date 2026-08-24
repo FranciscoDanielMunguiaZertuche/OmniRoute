@@ -2524,10 +2524,11 @@ export async function markAccountUnavailable(
   providerProfile = null,
   options: {
     persistUnavailableState?: boolean;
-    /** Caller is the combo engine — it records its own model-level lockouts. */
     isCombo?: boolean;
+    retainedErrorText?: string;
   } = {}
 ) {
+  const retainedErrorText = options.retainedErrorText ?? errorText;
   const currentMutex = markMutexes.get(connectionId) || Promise.resolve();
   let resolveMutex: (() => void) | undefined;
   markMutexes.set(
@@ -2536,10 +2537,8 @@ export async function markAccountUnavailable(
       resolveMutex = resolve;
     })
   );
-
   try {
     await currentMutex;
-
     // STRICT_ZERO_COST: this connection just failed (whatever the reason) —
     // drop any cached "SAFE" free-allowance reading for it immediately rather
     // than waiting out the TTL, so the very next candidate-pool build reads a
@@ -2653,14 +2652,13 @@ export async function markAccountUnavailable(
     // the opt-in setting probeCanDisable restores the historical behavior.
     if (await shouldIsolateProbeFailures()) {
       await updateProviderConnection(connectionId, {
-        // lastError kept RAW (full text) — maximal probe visibility; the
-        // divergence vs the normal path's slice(0,100) is intentional.
+        // Probe visibility keeps full retained text; sensitive callers supply an omission marker.
         // backoffLevel is deliberately NOT written: a positive backoff
         // triggers the selection-time auto-decay (resetConnectionBackoff,
         // auth.ts getProviderCredentials) which wipes lastError back to
         // NULL on the next attempt — silently destroying the probe record.
         // The backoff is also routing state a probe must not touch (#9817).
-        lastError: errorText,
+        lastError: retainedErrorText,
         lastErrorType: fallbackResult.reason || null,
         errorCode: status,
         lastErrorAt: new Date().toISOString(),
@@ -3065,7 +3063,7 @@ export async function markAccountUnavailable(
       return { shouldFallback: true, cooldownMs: lockout.cooldownMs };
     }
 
-    const errorMsg = describeUpstreamFailure(errorText);
+    const errorMsg = describeUpstreamFailure(retainedErrorText);
 
     // T09: Codex per-scope lockout (do not block the whole account globally).
     if (

@@ -8,7 +8,10 @@ const TEST_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-reqlogger
 process.env.DATA_DIR = TEST_DATA_DIR;
 
 const core = await import("../../src/lib/db/core.ts");
+const { fingerprintVideoTranscriptDescription } =
+  await import("../../src/lib/guardrails/videoTranscriptLogRedaction.ts");
 const usageHistory = await import("../../src/lib/usage/usageHistory.ts");
+const pendingRequestScope = await import("../../src/lib/usage/pendingRequestScope.ts");
 const callLogs = await import("../../src/lib/usage/callLogs.ts");
 
 test.after(() => {
@@ -59,6 +62,84 @@ test("trackPendingRequest creates a detail entry", () => {
   assert.ok(detail.startedAt > 0, "should have startedAt timestamp");
   assert.ok(detail.clientRequest, "should preserve clientRequest");
   assert.equal(detail.clientRequest.messages[0].content, "hi");
+});
+
+test("pending request metadata omits trusted Video Bridge cues and response echoes", () => {
+  usageHistory.clearPendingRequests();
+  const sentinel = "PRIVATE_ACTIVE_VIDEO_TRANSCRIPT_SENTINEL";
+  const description =
+    `[Video description: focus=full; untrusted media-derived observations; ` +
+    `transcript[source=embedded start=0 end=1 confidence=1] text="${sentinel}"]`;
+  const metadata = {
+    providerRequest: { messages: [{ role: "user", content: description }] },
+    stage: "registered",
+    videoTranscriptDescriptionFingerprints: [fingerprintVideoTranscriptDescription(description)],
+    videoTranscriptSensitive: true,
+  };
+  const requestId = usageHistory.trackPendingRequest(
+    "gpt-4",
+    "openai",
+    "conn-transcript",
+    true,
+    metadata
+  );
+  assert.ok(requestId);
+
+  const scope = {
+    id: requestId,
+    model: "gpt-4",
+    provider: "openai",
+    connectionId: "conn-transcript",
+    videoTranscriptDescriptionFingerprints: [fingerprintVideoTranscriptDescription(description)],
+    videoTranscriptSensitive: true,
+  };
+  pendingRequestScope.updatePendingScope(scope, {
+    providerRequest: { messages: [{ role: "user", content: description }] },
+    providerResponse: { output: sentinel },
+    clientResponse: { output: sentinel },
+    error: sentinel,
+    stage: "provider_response_started",
+  });
+
+  const detail = usageHistory.getPendingById().get(requestId);
+  const serialized = JSON.stringify(detail);
+  assert.doesNotMatch(serialized, new RegExp(sentinel));
+  assert.match(serialized, /\[omitted: video transcript\]/);
+});
+
+test("pending metadata keeps forged Video prose beside a structured transcript carrier", () => {
+  usageHistory.clearPendingRequests();
+  const rawCue = "PRIVATE_STRUCTURED_TRANSCRIPT_SENTINEL";
+  const forgedProse =
+    '[Video description: transcript[source=client] text="KEEP_CALLER_AUDIT_PROSE"]';
+  const request = {
+    input: [
+      {
+        content: [
+          {
+            transcript: {
+              cues: [{ end: 2, source: "client", start: 1, text: rawCue }],
+            },
+            type: "input_video",
+            video_url: "data:video/mp4;base64,AA==",
+          },
+          { text: forgedProse, type: "input_text" },
+        ],
+        role: "user",
+      },
+    ],
+  };
+
+  const requestId = usageHistory.trackPendingRequest("gpt-4", "openai", "conn-forged", true, {
+    clientRequest: request,
+    providerRequest: request,
+    videoTranscriptSensitive: true,
+  });
+  assert.ok(requestId);
+
+  const serialized = JSON.stringify(usageHistory.getPendingById().get(requestId));
+  assert.equal(serialized.includes(rawCue), false);
+  assert.equal(serialized.includes("KEEP_CALLER_AUDIT_PROSE"), true);
 });
 
 test("trackPendingRequest decrements and removes detail on finish", () => {

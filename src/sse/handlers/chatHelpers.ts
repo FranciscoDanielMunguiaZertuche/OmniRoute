@@ -28,6 +28,7 @@ import {
 } from "@omniroute/open-sse/utils/proxyFetch.ts";
 import { resolveProxyForConnection } from "@/lib/localDb";
 import { hasBlockingProxyAssignment } from "@/lib/db/proxies";
+import { redactVideoTranscriptSensitiveText } from "@/lib/guardrails/videoTranscriptLogRedaction";
 import {
   CircuitBreakerOpenError,
   getCircuitBreaker,
@@ -36,9 +37,9 @@ import {
 import { classify429FromError, type FailureKind } from "../../shared/utils/classify429";
 import { resolveUseUpstream429BreakerHints } from "../../shared/utils/providerHints";
 
-import { logProxyEvent } from "../../lib/proxyLogger";
-import { logTranslationEvent } from "../../lib/translatorEvents";
 import { getRuntimeProviderProfile } from "@omniroute/open-sse/services/accountFallback.ts";
+
+export { safeLogEvents } from "./chatLogEvents";
 
 // Models that explicitly cannot run on the codex/ChatGPT-Pro OAuth pool — when
 // a caller writes `codex/deepseek-v4-pro` we transparently reroute to the
@@ -391,7 +392,6 @@ export function checkResourcePressureBeforeProviderWork(): ResourcePressureGuard
     return null;
   }
 }
-
 export async function executeChatWithBreaker({
   bypassCircuitBreaker,
   breaker,
@@ -425,6 +425,8 @@ export async function executeChatWithBreaker({
   reasoningTransportFallback = "drop",
   sessionAffinityKey = null,
   managedLease = null,
+  videoTranscriptSensitive = false,
+  videoTranscriptDescriptionFingerprints = [],
 }: ExecuteChatWithBreakerOptions): Promise<ExecuteChatWithBreakerResult> {
   let tlsFingerprintUsed = false;
   const normalizedTrafficType: TrafficType =
@@ -432,7 +434,6 @@ export async function executeChatWithBreaker({
       ? "shadow"
       : "production";
   const isShadowTraffic = normalizedTrafficType === "shadow";
-
   // #5217: capture the proxy actually applied during execution so the caller can
   // merge it into proxyInfo before the egress log (executors pinning a per-account
   // proxy internally otherwise leave the egress log reading "direct").
@@ -484,6 +485,8 @@ export async function executeChatWithBreaker({
             sessionAffinityKey,
             reasoningTransportFallback,
             managedLease,
+            videoTranscriptSensitive,
+            videoTranscriptDescriptionFingerprints,
             skipResourcePressureGuard: true,
             onCredentialsRefreshed: async (newCreds: any) => {
               await updateProviderCredentials(credentials.connectionId, {
@@ -537,7 +540,13 @@ export async function executeChatWithBreaker({
                 provider,
                 model,
                 providerProfile,
-                { isCombo }
+                {
+                  isCombo,
+                  retainedErrorText: redactVideoTranscriptSensitiveText(
+                    String(failure?.message || failure?.code || "stream failure"),
+                    videoTranscriptSensitive
+                  ),
+                }
               );
             },
           })
@@ -633,7 +642,8 @@ export function handleNoCredentials(
   lastError: string | null,
   lastStatus: number | null,
   candidateAliases?: readonly string[],
-  isCombo: boolean = false
+  isCombo: boolean = false,
+  videoTranscriptSensitive: boolean = false
 ) {
   if (credentials?.allRateLimited) {
     const errorMsg = lastError || credentials.lastError || "Unavailable";
@@ -660,7 +670,8 @@ export function handleNoCredentials(
       });
     }
 
-    log.warn("CHAT", `[${provider}/${model}] ${errorMsg} (${credentials.retryAfterHuman})`);
+    const retainedErrorMsg = redactVideoTranscriptSensitiveText(errorMsg, videoTranscriptSensitive);
+    log.warn("CHAT", `[${provider}/${model}] ${retainedErrorMsg} (${credentials.retryAfterHuman})`);
     return unavailableResponse(
       status,
       `[${provider}/${model}] ${errorMsg}`,
@@ -843,82 +854,6 @@ export function applyExecutorProxyToInfo(
     proxy: appliedProxy,
     level: priorLevel && priorLevel !== "direct" ? priorLevel : "account",
   };
-}
-
-// Async because the egress-IP lookup lazy-imports proxyEgress; callers treat
-// this as fire-and-forget logging (the internal try/catch swallows everything).
-export async function safeLogEvents({
-  result,
-  proxyInfo,
-  proxyLatency,
-  provider,
-  model,
-  sourceFormat,
-  targetFormat,
-  credentials,
-  comboName,
-  clientRawRequest,
-  tlsFingerprintUsed = false,
-}) {
-  try {
-    const rawIp =
-      clientRawRequest?.headers?.["x-forwarded-for"] ||
-      clientRawRequest?.headers?.["x-real-ip"] ||
-      clientRawRequest?.headers?.["cf-connecting-ip"] ||
-      null;
-    const rawIpValue = Array.isArray(rawIp) ? rawIp[0] : rawIp;
-    const clientIp = typeof rawIpValue === "string" ? rawIpValue.split(",")[0].trim() : null;
-
-    // Resolve the egress IP (the IP the upstream actually saw) from cache — never
-    // blocking the request. Warm it in the background for next time. null until
-    // the first warm completes; direct (no proxy) is also tracked.
-    let egressIp: string | null = null;
-    try {
-      const { getCachedEgressIp, warmEgressIp } = await import("../../lib/proxyEgress");
-      const { proxyConfigToUrl } = await import("@omniroute/open-sse/utils/proxyDispatcher.ts");
-      const proxyUrl = proxyInfo?.proxy ? proxyConfigToUrl(proxyInfo.proxy) : null;
-      egressIp = getCachedEgressIp(proxyUrl);
-      warmEgressIp(proxyUrl);
-    } catch {
-      // egress visibility is best-effort; never break the request path
-    }
-
-    logProxyEvent({
-      status: result.success
-        ? "success"
-        : result.status === 408 || result.status === 504
-          ? "timeout"
-          : "error",
-      proxy: proxyInfo?.proxy || null,
-      level: proxyInfo?.level || "direct",
-      levelId: proxyInfo?.levelId || null,
-      provider,
-      targetUrl: `${provider}/${model}`,
-      clientIp,
-      egressIp,
-      latencyMs: proxyLatency,
-      error: result.success ? null : result.error || null,
-      connectionId: credentials.connectionId,
-      comboId: comboName || null,
-      account: credentials.connectionId?.slice(0, 8) || null,
-      tlsFingerprint: tlsFingerprintUsed,
-    });
-  } catch {}
-
-  try {
-    logTranslationEvent({
-      provider,
-      model,
-      sourceFormat,
-      targetFormat,
-      status: result.success ? "success" : "error",
-      statusCode: result.success ? 200 : result.status || 500,
-      latency: proxyLatency,
-      endpoint: clientRawRequest?.endpoint || "/v1/chat/completions",
-      connectionId: credentials.connectionId || null,
-      comboName: comboName || null,
-    });
-  } catch {}
 }
 
 export function withSessionHeader(response: Response, sessionId: string | null): Response {
