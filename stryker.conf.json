@@ -226,7 +226,6 @@
       "tests/unit/db/stats-dbstat-optional.test.ts",
       "tests/unit/ddg-circuit-breaker-null-content-6999-7000.test.ts",
       "tests/unit/domain-persistence.test.ts",
-      "tests/unit/edgetts-provider.test.ts",
       "tests/unit/embedding-account-cooldown-10347.test.ts",
       "tests/unit/embedding-cooldown-integration-10347.test.ts",
       "tests/unit/embeddings-auth.test.ts",

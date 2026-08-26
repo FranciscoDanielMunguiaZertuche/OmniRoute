@@ -1027,7 +1027,6 @@ If only OpenRouter is configured, use `openrouter/deepgram/nova-3`.
 - `kie/`
 - `aws-polly/`
 - `xiaomi-mimo/`
-- `edgetts/` (Microsoft Edge "Read Aloud" — free, no API key; unofficial/reverse-engineered endpoint)
 - `coqui/`, `tortoise/`
 - `qwen/`
 

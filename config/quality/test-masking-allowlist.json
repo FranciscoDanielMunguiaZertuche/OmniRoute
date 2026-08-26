@@ -74,14 +74,16 @@
       "reason": "v3.8.50 #9126 (commit 8fac6bcd48): pluginWorker.ts, sandbox.ts e signing.ts foram removidos por completo (\"zero importers confirmed\") — o subsistema de sandbox de plugins com worker-thread nunca foi ligado a nenhum consumidor. O teste era source-scan sobre pluginWorker.ts (ver docstring do arquivo deletado); sem o arquivo-fonte não há mais o que testar. OMNIROUTE_PLUGINS_ALLOW_EXEC também foi removido de .env.example e da doc na mesma release. Sem substituto porque a feature foi extinta, não migrada."
     },
     "tests/unit/plugins-sandbox.test.ts": {
-      "sourceRemoved": [
-        "src/lib/plugins/sandbox.ts"
-      ],
+      "sourceRemoved": ["src/lib/plugins/sandbox.ts"],
       "reason": "v3.8.50 #9126 (commit 8fac6bcd48): sandbox.ts foi removido por completo junto com pluginWorker.ts e signing.ts (\"zero importers confirmed\", subsistema de sandbox de plugins nunca ligado a nenhum consumidor). O teste cobria SandboxLevel/getSandboxLabel exportados por sandbox.ts; sem o arquivo-fonte não há mais símbolo a testar. Mesma causa-raiz de tests/unit/plugin-sandbox-permissions.test.ts nesta entrada."
     },
     "tests/unit/gemini-3-5-flash-thinking.test.ts": {
       "replacement": "tests/unit/gemini-models-parser.test.ts",
       "reason": "v3.8.50 #10286 superseded by 2764812ee4 \"fix(providers): eliminate Gemini 3.5 Flash\": the model was RETIRED on this line, so its thinking-capability regression test (added by #10450 for the pre-retirement behavior) was deleted together with the model's MODEL_SPECS entry, its changelog fragment and its rate-limit config — feature removal by the maintainer, not masking. The replacement pins the NEW contract: \"parseGeminiModelsList excludes retired Gemini 3.5 Flash but keeps Flash Lite\". The gate only sees the deletion because main still carries the pre-retirement file; it prunes itself once v3.8.50 merges to main. Human review: presented to the operator during the v3.8.50 release pre-flight."
+    },
+    "tests/unit/edgetts-provider.test.ts": {
+      "replacement": "tests/unit/edgetts-retirement.test.ts",
+      "reason": "v3.8.50 pending PR: the EdgeTTS executor and its positive protocol tests were retired together after a provenance/licensing HOLD. The replacement pins the new public contract across the speech registry, handler and UI-derived catalog while preserving gTTS, AWS Polly and ElevenLabs. Feature retirement, not test masking; prune after v3.8.50 merges to main."
     }
   },
   "tests/unit/catalog-updates-v3x.test.ts": "v3.8.45 #6248: fix(providers) remove deprecated MiMo V2 entries — os 5 asserts removidos pinavam specs de modelos mimo-v2-* que deixaram de existir no catálogo (54→49). Asserts seguem a remoção dos modelos, não enfraquecimento. Verificado legítimo. Prune após v3.8.45 mergear para main.",

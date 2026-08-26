@@ -27,7 +27,7 @@ Core capabilities:
 - Embedding generation via `/v1/embeddings` (6 providers, 9 models)
 - Image generation via `/v1/images/generations` (10+ providers, 20+ models)
 - Audio transcription via `/v1/audio/transcriptions` (7 providers)
-- Text-to-speech via `/v1/audio/speech` (10 providers)
+- Text-to-speech via `/v1/audio/speech` (24 built-in providers)
 - Video generation via `/v1/videos/generations` (ComfyUI + SD WebUI)
 - Music generation via `/v1/music/generations` (ComfyUI)
 - Web search via `/v1/search` (5 providers)
@@ -980,7 +980,7 @@ All other providers (including custom compatible nodes) use the `DefaultExecutor
 | KIE               | openai           | API Key               | ✅               | ✅         | ❌            | ❌                 |
 | Devin Desktop     | openai           | Imported API key      | ✅ (Connect→SSE) | ✅         | ❌            | ⚠️ Per request     |
 | GitLab Duo        | openai           | OAuth (GitLab)        | ✅               | ✅         | ✅            | ❌                 |
-| Devin CLI | openai | Local CLI login | ✅ | ✅ | ❌ | ✅ Task API |
+| Devin CLI         | openai           | Local CLI login       | ✅               | ✅         | ❌            | ✅ Task API        |
 | Codex Cloud       | openai-responses | OAuth                 | ✅               | ❌         | ✅            | ✅ Rate limits     |
 | Jules             | openai           | OAuth                 | ✅               | ✅         | ✅            | ✅ Task API        |
 | AgentRouter       | openai           | API Key               | ✅               | ✅         | ❌            | ❌                 |

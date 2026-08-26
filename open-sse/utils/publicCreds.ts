@@ -186,15 +186,6 @@ const EMBEDDED_DEFAULTS = {
     12, 93, 15, 11, 74, 12, 16, 77, 72, 72, 73, 20, 82, 65, 93, 81, 72, 65, 28, 13, 93, 88, 93, 95,
     92, 70, 16, 81, 31, 66, 17, 4, 88, 88, 5, 28,
   ],
-  // Microsoft Edge Read Aloud (EdgeTTS) — public "trusted client token" used to
-  // derive the Sec-MS-GEC anti-abuse header. Hardcoded in every known Edge
-  // browser build and every open-source edge-tts reimplementation (e.g.
-  // rany2/edge-tts constants.py) — not a per-user secret, just an
-  // abuse-mitigation constant Microsoft ships in public client binaries.
-  edgetts_token: [
-    89, 44, 91, 40, 51, 94, 49, 64, 32, 108, 54, 51, 86, 41, 80, 37, 111, 69, 6, 42, 95, 93, 45, 68,
-    87, 65, 77, 84, 105, 70, 51, 86,
-  ],
   // Adobe Firefly web (firefly.adobe.com) — public x-api-key + IMS client_id
   // (`clio-playground-web`). Captured from live browser generate/discovery calls.
   // Not a per-user secret; every Firefly SPA session sends the same value.

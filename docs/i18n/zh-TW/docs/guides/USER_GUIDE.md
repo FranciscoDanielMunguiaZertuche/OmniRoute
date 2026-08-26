@@ -973,7 +973,6 @@ curl -X POST http://localhost:20128/v1/audio/transcriptions \
 - `kie/`
 - `aws-polly/`
 - `xiaomi-mimo/`
-- `edgetts/`（Microsoft Edge「朗讀功能」— 免費，無需 API 金鑰；非官方/逆向工程端點）
 - `coqui/`, `tortoise/`
 - `qwen/`
 
