@@ -27,6 +27,7 @@ import {
 import { getSettings } from "@/lib/db/settings";
 import { buildJinaEnvCredentials } from "@/lib/providers/jina";
 import { buildGeminiEnvCredentials } from "@/lib/providers/gemini";
+import { isRuntimeRetiredProviderId } from "@/shared/constants/providerRetirement";
 import { toNumber } from "@/shared/utils/numeric";
 import {
   createLazyConnectionView,
@@ -1231,6 +1232,12 @@ export async function getProviderCredentials(
   requestedModel: string | null = null,
   options: CredentialSelectionOptions = {}
 ) {
+  if (isRuntimeRetiredProviderId(provider)) {
+    invalidateManagedLease(options, "CONNECTION_INELIGIBLE");
+    log.warn("AUTH", "Retired provider rejected before credential selection");
+    return null;
+  }
+
   const selectionLock = options._leaseRetryWithLockHeld
     ? null
     : createSelectionLock(getSelectionMutexKey(provider, options));

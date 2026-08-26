@@ -6,7 +6,7 @@ import { resolveLifecycle } from "../../open-sse/handlers/chatCore/modelLifecycl
 
 /**
  * Bare `qwen3.8-max` was an unroutable id: the model ships everywhere as
- * `qwen3.8-max-preview` (bailian-coding-plan, qoder, qwen-cloud-token-plan, qwen-web),
+ * `qwen3.8-max-preview` (bailian-coding-plan, qoder, qwen-cloud-token-plan),
  * and nothing in the repo declared the short form. A client sending it therefore
  *
  *   1. missed MODEL_SPECS, so `getModelContextLimit()` fell through to the
@@ -45,7 +45,7 @@ test("the alias target carries the real 1M window, not the 128k fallback", () =>
 });
 
 test("chatCore lifecycle resolution rewrites the model before dispatch", () => {
-  for (const provider of ["qwen-cloud-token-plan", "qoder", "bailian-coding-plan", "qwen-web"]) {
+  for (const provider of ["qwen-cloud-token-plan", "qoder", "bailian-coding-plan"]) {
     const [resolvedModel, effectiveModel, lifecycleError] = resolveLifecycle(provider, BARE);
     assert.equal(resolvedModel, CANONICAL, `resolvedModel for ${provider}`);
     assert.equal(effectiveModel, CANONICAL, `effectiveModel for ${provider}`);

@@ -17,13 +17,11 @@ process.env.DATA_DIR = testDataDir;
 // Dynamic imports AFTER DATA_DIR is set so core.ts picks up the temp path.
 const coreDb = await import("../../src/lib/db/core.ts");
 const upstreamProxyDb = await import("../../src/lib/db/upstreamProxy.ts");
-const { resolveExecutorWithProxy } = await import(
-  "../../open-sse/handlers/chatCore/executorProxy.ts"
-);
+const { resolveExecutorWithProxy } =
+  await import("../../open-sse/handlers/chatCore/executorProxy.ts");
 const { getExecutor } = await import("../../open-sse/executors/index.ts");
-const { clearUpstreamProxyConfigCache } = await import(
-  "../../open-sse/handlers/chatCore/comboContextCache.ts"
-);
+const { clearUpstreamProxyConfigCache } =
+  await import("../../open-sse/handlers/chatCore/comboContextCache.ts");
 
 before(async () => {
   await coreDb.ensureDbInitialized();
@@ -136,4 +134,25 @@ test("connection override wins over provider mode 'fallback'", async () => {
   });
   // Connection override short-circuits to the passthrough executor, not the fallback wrapper.
   assert.equal(exec, getExecutor("cliproxyapi"));
+});
+
+test("retired Qwen Web ids cannot bypass the tombstone through a connection proxy", async () => {
+  for (const providerId of ["qwen-web", "qw", " QwEn-WeB ", "\tQW\n"]) {
+    await assert.rejects(
+      resolveExecutorWithProxy(providerId, undefined, {
+        cliproxyapiMode: "claude-native",
+      }),
+      (error: unknown) => {
+        const typed = error as Error & { status?: number };
+        assert.equal(typed.status, 410);
+        assert.match(typed.message, /retired/i);
+        return true;
+      }
+    );
+  }
+
+  const qwenCloud = await resolveExecutorWithProxy("qwen-cloud", undefined, {
+    cliproxyapiMode: "claude-native",
+  });
+  assert.equal(qwenCloud, getExecutor("cliproxyapi"));
 });

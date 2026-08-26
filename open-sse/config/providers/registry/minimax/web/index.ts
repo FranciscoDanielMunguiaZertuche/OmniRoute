@@ -11,8 +11,8 @@ export const hailuo_webProvider: RegistryEntry = {
   id: "hailuo-web",
   // Distinct alias: the paid API-key "minimax"/"minimax-cn" providers
   // (../../minimax/index.ts) keep their own short alias; this free web/cookie
-  // variant is addressed by its own id, per the established kimi-web/qwen-web
-  // secondary-variant convention (tests/unit/provider-alias-uniqueness.test.ts).
+  // variant is addressed by its own id, following the web-only secondary-provider
+  // convention guarded by tests/unit/provider-alias-uniqueness.test.ts.
   alias: "hailuo-web",
   format: "openai",
   executor: "hailuo-web",

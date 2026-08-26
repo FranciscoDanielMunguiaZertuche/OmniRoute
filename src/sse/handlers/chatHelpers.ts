@@ -29,6 +29,10 @@ import {
 import { resolveProxyForConnection } from "@/lib/localDb";
 import { hasBlockingProxyAssignment } from "@/lib/db/proxies";
 import {
+  isRuntimeProviderRetirementError,
+  RUNTIME_PROVIDER_RETIRED_MESSAGE,
+} from "@/shared/constants/providerRetirement";
+import {
   CircuitBreakerOpenError,
   getCircuitBreaker,
   isLocalStreamLifecycleError,
@@ -120,7 +124,17 @@ export async function resolveModelOrError(
   endpointPath: string = "",
   requestHeaders: Record<string, unknown> | null | undefined = null
 ) {
-  const modelInfo = await getModelInfo(modelStr);
+  let modelInfo;
+  try {
+    modelInfo = await getModelInfo(modelStr);
+  } catch (error) {
+    if (isRuntimeProviderRetirementError(error)) {
+      return {
+        error: errorResponse(HTTP_STATUS.GONE, RUNTIME_PROVIDER_RETIRED_MESSAGE),
+      };
+    }
+    throw error;
+  }
   const sourceFormat = detectFormatFromEndpoint(body, endpointPath);
 
   if (

@@ -12,10 +12,9 @@ const B = await import("../../src/lib/providers/validation/webProvidersB.ts");
 const meta = await import("../../src/lib/providers/validation/metaAi.ts");
 const HOST = await import("../../src/lib/providers/validation.ts");
 
-test("webProvidersA exposes its six validators (deepseek/qwen/grok/chatgpt/perplexity/blackbox)", () => {
+test("webProvidersA exposes its validators (deepseek/grok/chatgpt/perplexity/blackbox)", () => {
   for (const name of [
     "validateDeepSeekWebProvider",
-    "validateQwenWebProvider",
     "validateGrokWebProvider",
     "validateChatGptWebProvider",
     "validatePerplexityWebProvider",

@@ -14,6 +14,7 @@ process.env.DATA_DIR = TEST_DATA_DIR;
 
 const core = await import("../../src/lib/db/core.ts");
 const providersDb = await import("../../src/lib/db/providers.ts");
+const modelsDb = await import("../../src/lib/db/models.ts");
 const combo = await import("../../open-sse/services/combo.ts");
 const providerModels = await import("../../open-sse/config/providerModels.ts");
 
@@ -61,6 +62,55 @@ test("expandAutoComboCandidatePool adds every model of an active provider when n
       `expected expanded targets to include ${id}`
     );
   }
+});
+
+test("expandAutoComboCandidatePool excludes retired Qwen rows with synced models", async () => {
+  const db = core.getDbInstance();
+  db.exec(`
+    DROP TRIGGER provider_connections_retire_qwen_web_insert;
+    DROP TRIGGER provider_connections_retire_qwen_web_update;
+  `);
+
+  const qwenWeb = await providersDb.createProviderConnection({
+    provider: "qwen-web",
+    authType: "apikey",
+    name: "Retired Qwen Web",
+    apiKey: "retired-qwen-web-key",
+  });
+  const legacyAlias = await providersDb.createProviderConnection({
+    provider: "qw",
+    authType: "apikey",
+    name: "Retired Qwen Web Alias",
+    apiKey: "retired-qw-key",
+  });
+  const qwenCloud = await providersDb.createProviderConnection({
+    provider: "qwen-cloud",
+    authType: "apikey",
+    name: "Qwen Cloud Control",
+    apiKey: "qwen-cloud-key",
+  });
+
+  await modelsDb.replaceSyncedAvailableModelsForConnection("qwen-web", qwenWeb.id, [
+    { id: "retired-web-model", name: "Retired Web Model" },
+  ]);
+  await modelsDb.replaceSyncedAvailableModelsForConnection("qw", legacyAlias.id, [
+    { id: "retired-alias-model", name: "Retired Alias Model" },
+  ]);
+  await modelsDb.replaceSyncedAvailableModelsForConnection("qwen-cloud", qwenCloud.id, [
+    { id: "qwen3.8-max", name: "Qwen3.8 Max" },
+  ]);
+
+  const expanded = await combo.expandAutoComboCandidatePool([], { config: {} });
+
+  assert.equal(
+    expanded.some((target) => target.provider === "qwen-web"),
+    false
+  );
+  assert.equal(
+    expanded.some((target) => target.provider === "qw"),
+    false
+  );
+  assert.ok(expanded.some((target) => target.modelStr === "qwen-cloud/qwen3.8-max"));
 });
 
 test("expandAutoComboCandidatePool is a no-op when an explicit candidatePool exists", async () => {

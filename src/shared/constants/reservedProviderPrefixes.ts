@@ -12,13 +12,18 @@
 //      tokenrouter" despite a fully configured compatible node).
 //
 // Semantics (mirror the original inline runtime guard exactly):
-//   - REGISTRY entry ids + aliases only. Manual alias ids outside REGISTRY
+//   - REGISTRY entry ids + aliases, plus permanent tombstones for retired
+//     provider ids. Manual alias ids outside REGISTRY
 //     (xiaomi/llamacpp/aq) do NOT intercept nodes at runtime and are therefore
 //     deliberately NOT reserved — including them would cause false-positive
 //     rejections.
-//   - Case-sensitive: mixed-case input like "TokenRouter" does not collide with
-//     the runtime lookup (`Set.has` is exact-match), so it stays allowed.
+//   - Active registry ids remain case-sensitive: mixed-case input like
+//     "TokenRouter" does not collide with the runtime lookup (`Set.has` is
+//     exact-match), so it stays allowed. Retired ids use the tombstone's
+//     trim/lowercase normalization so casing cannot bypass retirement.
 import { REGISTRY } from "@omniroute/open-sse/config/providerRegistry.ts";
+
+import { isRuntimeRetiredProviderId, RUNTIME_RETIRED_PROVIDER_IDS } from "./providerRetirement";
 
 let _reserved: Set<string> | null = null;
 
@@ -29,13 +34,15 @@ function buildReservedProviderPrefixes(): Set<string> {
     if (entry?.id) reserved.add(entry.id);
     if (entry?.alias) reserved.add(entry.alias);
   }
+  for (const providerId of RUNTIME_RETIRED_PROVIDER_IDS) reserved.add(providerId);
   _reserved = reserved;
   return reserved;
 }
 
 /**
- * All reserved provider prefixes (REGISTRY ids + aliases). Built lazily so the
- * registry is only walked once per process.
+ * All exact reserved provider prefixes (REGISTRY ids + aliases and retired
+ * provider tombstones). Built lazily so the registry is only walked once per
+ * process.
  */
 export function getReservedProviderPrefixes(): ReadonlySet<string> {
   return buildReservedProviderPrefixes();
@@ -58,7 +65,10 @@ export const RESERVED_PROVIDER_PREFIXES: ReadonlySet<string> = getReservedProvid
  * reserved (mirrors the runtime guard's typeof check).
  */
 export function isReservedProviderPrefix(value: unknown): boolean {
-  return typeof value === "string" && buildReservedProviderPrefixes().has(value);
+  return (
+    typeof value === "string" &&
+    (buildReservedProviderPrefixes().has(value) || isRuntimeRetiredProviderId(value))
+  );
 }
 
 /**

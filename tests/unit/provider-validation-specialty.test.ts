@@ -16,7 +16,6 @@ const { __setTlsFetchOverrideForTesting: __setPplxTlsFetchOverride } =
 const { __setTlsFetchOverrideForTesting: __setGrokTlsFetchOverride } =
   await import("../../open-sse/services/grokTlsClient.ts");
 
-
 const originalFetch = globalThis.fetch;
 
 test.afterEach(() => {
@@ -2903,11 +2902,11 @@ test("gitlawb-gmi validator: accepts custom baseUrl override", async () => {
 test("isSecurityBlockError: public-host redirect block is NOT a security block", () => {
   const publicRedirect = new SafeOutboundFetchError("Redirect blocked", {
     code: "REDIRECT_BLOCKED",
-    url: "https://chat.qwen.ai/api/v2/models/",
+    url: "https://public-provider.example.com/api/v2/models/",
     method: "GET",
     attempts: 1,
     status: 307,
-    location: "https://chat.qwen.ai/login",
+    location: "https://public-provider.example.com/login",
     isRetryable: false,
   });
   assert.equal(isSecurityBlockError(publicRedirect), false);

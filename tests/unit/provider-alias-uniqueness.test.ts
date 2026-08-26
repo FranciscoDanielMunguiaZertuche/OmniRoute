@@ -45,7 +45,6 @@ test("no two provider IDs share the same alias in the open-sse registry", () => 
 
 test("primary providers keep the short alias; web variants use their own id", () => {
   // open-sse registry (source of the startup warning + chat routing)
-  assert.equal(PROVIDER_ID_TO_ALIAS["qwen-web"], "qwen-web");
   assert.equal(PROVIDER_ID_TO_ALIAS.kimi, "kimi");
   assert.equal(PROVIDER_ID_TO_ALIAS["kimi-web"], "kimi-web");
   assert.equal(PROVIDER_ID_TO_ALIAS.huggingchat, "huggingchat");
@@ -54,8 +53,7 @@ test("primary providers keep the short alias; web variants use their own id", ()
 test("src/shared providers map resolves the same aliases unambiguously", () => {
   // alias → id
   assert.equal(resolveProviderId("kimi"), "kimi");
-  // id used as alias for the secondary variants
-  assert.equal(resolveProviderId("qwen-web"), "qwen-web");
+  // ids used as aliases for the supported secondary variants
   assert.equal(resolveProviderId("kimi-web"), "kimi-web");
   assert.equal(resolveProviderId("huggingchat"), "huggingchat");
   // id → alias

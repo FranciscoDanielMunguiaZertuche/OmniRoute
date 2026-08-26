@@ -305,7 +305,7 @@ export const WEB_COOKIE_PROVIDERS = {
     // alias. Aliases resolve 1:1 to a provider id, so the dashboard's model-string
     // routing always picked v0-vercel, silently hiding this provider's own
     // credentials. Follows the established secondary-web-variant convention (see
-    // kimi-web / qwen-web / huggingchat in tests/unit/provider-alias-uniqueness.test.ts):
+    // kimi-web / huggingchat in tests/unit/provider-alias-uniqueness.test.ts):
     // the web/secondary variant uses its own id as alias instead of a short prefix.
     alias: "v0-vercel-web",
     name: "v0 Vercel Web (Code Gen)",
@@ -359,22 +359,6 @@ export const WEB_COOKIE_PROVIDERS = {
       "requests fail, re-capture _token (sessions can expire).",
     subscriptionRisk: true,
     riskNoticeVariant: "webCookie",
-  },
-  "qwen-web": {
-    id: "qwen-web",
-    // The web variant uses its own id; the retired `qw` alias is not reassigned.
-    alias: "qwen-web",
-    name: "Qwen Web (Free)",
-    icon: "auto_awesome",
-    color: "#10B981",
-    textIcon: "QW",
-    website: "https://chat.qwen.ai",
-    hasFree: true,
-    freeNote: "Free — Qwen models via chat.qwen.ai with login token. No subscription required.",
-    authHint:
-      "Open chat.qwen.ai, log in, then open DevTools → Application → Local Storage → " +
-      'copy the "token" value (or use tongyi_sso_ticket cookie as Bearer token).',
-    toolCalling: "emulated",
   },
   "gemini-business": {
     id: "gemini-business",

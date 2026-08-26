@@ -83,39 +83,39 @@ test("createVirtualAutoCombo includes OAuth accessToken connections with real ex
 
 test("createVirtualAutoCombo includes configured web-session providers without apiKey fields", async () => {
   await providersDb.createProviderConnection({
-    provider: "qwen-web",
+    provider: "kimi-web",
     authType: "apikey",
-    name: "Qwen Web Session",
-    providerSpecificData: { token: "qwen-web-session-token" },
-    defaultModel: "qwen3-coder-plus",
+    name: "Kimi Web Session",
+    providerSpecificData: { token: "kimi-web-session-token" },
+    defaultModel: "k3",
   });
 
   const combo: VirtualComboResult = await virtualFactory.createVirtualAutoCombo("coding");
 
-  const qwenWeb = combo.models.find(
-    (model) => model.providerId === "qwen-web" && model.model === "qwen-web/qwen3-coder-plus"
+  const kimiWeb = combo.models.find(
+    (model) => model.providerId === "kimi-web" && model.model === "kimi-web/k3"
   );
-  assert.ok(qwenWeb, "the configured web-session model should be an auto candidate");
-  assert.ok(combo.autoConfig.candidatePool.includes("qwen-web"));
+  assert.ok(kimiWeb, "the configured web-session model should be an auto candidate");
+  assert.ok(combo.autoConfig.candidatePool.includes("kimi-web"));
 });
 
 test("createVirtualAutoCombo excludes web-session providers with empty required token data", async () => {
   await providersDb.createProviderConnection({
-    provider: "qwen-web",
+    provider: "kimi-web",
     authType: "apikey",
-    name: "Qwen Web Empty Session",
+    name: "Kimi Web Empty Session",
     providerSpecificData: { token: "   " },
-    defaultModel: "qwen3-coder-plus",
+    defaultModel: "k3",
   });
 
   const combo: VirtualComboResult = await virtualFactory.createVirtualAutoCombo("coding");
 
   assert.equal(
-    combo.models.some((model) => model.providerId === "qwen-web"),
+    combo.models.some((model) => model.providerId === "kimi-web"),
     false,
     "web-session providers with empty required token data must not be auto-combo candidates"
   );
-  assert.equal(combo.autoConfig.candidatePool.includes("qwen-web"), false);
+  assert.equal(combo.autoConfig.candidatePool.includes("kimi-web"), false);
 });
 
 test("createVirtualAutoCombo excludes web-session providers with irrelevant providerSpecificData", async () => {
@@ -139,37 +139,81 @@ test("createVirtualAutoCombo excludes web-session providers with irrelevant prov
 
 test("createVirtualAutoCombo groups same-provider web sessions behind one logical model", async () => {
   const connA = await providersDb.createProviderConnection({
-    provider: "qwen-web",
+    provider: "kimi-web",
     authType: "apikey",
-    name: "Qwen Web Session A",
-    providerSpecificData: { token: "qwen-web-session-token-a" },
-    defaultModel: "qwen3-coder-plus",
+    name: "Kimi Web Session A",
+    providerSpecificData: { token: "kimi-web-session-token-a" },
+    defaultModel: "k3",
   });
   const connB = await providersDb.createProviderConnection({
-    provider: "qwen-web",
+    provider: "kimi-web",
     authType: "apikey",
-    name: "Qwen Web Session B",
-    providerSpecificData: { token: "qwen-web-session-token-b" },
-    defaultModel: "qwen3-coder-plus",
+    name: "Kimi Web Session B",
+    providerSpecificData: { token: "kimi-web-session-token-b" },
+    defaultModel: "k3",
   });
 
   const combo: VirtualComboResult = await virtualFactory.createVirtualAutoCombo("coding");
 
-  const qwenWebModel = combo.models.find(
-    (model) => model.providerId === "qwen-web" && model.model === "qwen-web/qwen3-coder-plus"
+  const kimiWebModel = combo.models.find(
+    (model) => model.providerId === "kimi-web" && model.model === "kimi-web/k3"
   );
-  assert.ok(qwenWebModel, "the provider model should remain in the candidate pool");
-  assert.equal(qwenWebModel.connectionId, null);
+  assert.ok(kimiWebModel, "the provider model should remain in the candidate pool");
+  assert.equal(kimiWebModel.connectionId, null);
   assert.deepEqual(
-    new Set(qwenWebModel.allowedConnectionIds),
+    new Set(kimiWebModel.allowedConnectionIds),
     new Set([connA.id, connB.id]),
     "same-provider web sessions should remain available as account fallbacks"
   );
   assert.equal(
-    combo.autoConfig.candidatePool.filter((provider) => provider === "qwen-web").length,
+    combo.autoConfig.candidatePool.filter((provider) => provider === "kimi-web").length,
     1,
     "provider pool remains provider-scoped while model entries preserve connection identity"
   );
+});
+
+test("createVirtualAutoCombo excludes trigger-bypassed retired Qwen rows", async () => {
+  const db = core.getDbInstance();
+  db.exec(`
+    DROP TRIGGER provider_connections_retire_qwen_web_insert;
+    DROP TRIGGER provider_connections_retire_qwen_web_update;
+  `);
+
+  await providersDb.createProviderConnection({
+    provider: "qwen-web",
+    authType: "apikey",
+    name: "Retired Qwen Web",
+    apiKey: "retired-qwen-web-key",
+    defaultModel: "qwen3.8-max",
+  });
+  await providersDb.createProviderConnection({
+    provider: "qw",
+    authType: "apikey",
+    name: "Retired Qwen Web Alias",
+    apiKey: "retired-qw-key",
+    defaultModel: "qwen3.8-max",
+  });
+  await providersDb.createProviderConnection({
+    provider: "qwen-cloud",
+    authType: "apikey",
+    name: "Qwen Cloud Control",
+    apiKey: "qwen-cloud-key",
+    defaultModel: "qwen3.8-max",
+  });
+
+  const combo: VirtualComboResult = await virtualFactory.createVirtualAutoCombo("coding");
+
+  assert.equal(
+    combo.models.some((model) => model.providerId === "qwen-web"),
+    false
+  );
+  assert.equal(
+    combo.models.some((model) => model.providerId === "qw"),
+    false
+  );
+  assert.equal(combo.autoConfig.candidatePool.includes("qwen-web"), false);
+  assert.equal(combo.autoConfig.candidatePool.includes("qw"), false);
+  assert.ok(combo.autoConfig.candidatePool.includes("qwen-cloud"));
 });
 
 test("createVirtualAutoCombo includes cookie web-session providers with required cookie data", async () => {

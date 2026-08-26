@@ -46,7 +46,6 @@ export const FREE_TIER_TOS: Record<string, TosVerdict> = {
   "amazon-q": "avoid",
   "muse-spark-web": "avoid",
   "t3-web": "avoid",
-  "qwen-web": "avoid",
   modal: "avoid",
   nlpcloud: "avoid",
   blackbox: "avoid",

@@ -29,7 +29,6 @@ import {
 import { toValidationErrorResult } from "./validation/transport";
 import {
   validateDeepSeekWebProvider,
-  validateQwenWebProvider,
   validateGrokWebProvider,
   validateChatGptWebProvider,
   validatePerplexityWebProvider,
@@ -303,7 +302,6 @@ export async function validateProviderApiKey({ provider, apiKey, providerSpecifi
     "deepseek-web": validateDeepSeekWebProvider,
     "zai-web": validateZaiWebProvider,
     "grok-web": validateGrokWebProvider,
-    "qwen-web": validateQwenWebProvider,
     "kimi-web": validateKimiWebProvider,
     "chatgpt-web": validateChatGptWebProvider,
     "chatgpt-web-codex": validateChatGptWebCodexProvider,

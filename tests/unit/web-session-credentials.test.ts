@@ -106,15 +106,15 @@ test("web session credential metadata identifies cookie, token, and no-auth prov
 
 test("web session credential validator requires provider-specific non-empty values", () => {
   assert.equal(
-    webSessionCredentials.hasUsableWebSessionCredential("qwen-web", { token: "qwen-token" }),
+    webSessionCredentials.hasUsableWebSessionCredential("kimi-web", { token: "kimi-token" }),
     true
   );
   assert.equal(
-    webSessionCredentials.hasUsableWebSessionCredential("qwen-web", { token: "   " }),
+    webSessionCredentials.hasUsableWebSessionCredential("kimi-web", { token: "   " }),
     false
   );
   assert.equal(
-    webSessionCredentials.hasUsableWebSessionCredential("qwen-web", { unrelated: "value" }),
+    webSessionCredentials.hasUsableWebSessionCredential("kimi-web", { unrelated: "value" }),
     false
   );
   assert.equal(

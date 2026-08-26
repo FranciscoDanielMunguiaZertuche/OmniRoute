@@ -62,7 +62,6 @@ const FAKE_CREDS: Record<string, string> = {
   "v0-vercel-web": "fake-audit-sweep",
   "kimi-web": "fake-audit-sweep",
   "doubao-web": "sessionid=fake-audit-sweep; ttwid=fake-audit-sweep; s_v_web_id=verify_fake",
-  "qwen-web": "fake-audit-sweep",
   "duckduckgo-web": "",
   "veoaifree-web": "",
 };

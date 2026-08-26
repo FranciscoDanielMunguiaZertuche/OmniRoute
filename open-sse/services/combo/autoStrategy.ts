@@ -28,6 +28,7 @@ import type {
   ResolvedComboTarget,
 } from "./types.ts";
 import { extractSessionAffinityKey } from "@/sse/services/auth";
+import { isRuntimeRetiredProviderId } from "@/shared/constants/providerRetirement";
 import { filterChatSelectableModels } from "../modelEndpointPolicy.ts";
 import { DEFAULT_INTENT_CONFIG, type IntentClassifierConfig } from "../intentClassifier.ts";
 import { getTaskFitness } from "../autoCombo/taskFitness.ts";
@@ -457,7 +458,10 @@ export async function expandAutoComboCandidatePool(
       ...new Set(
         (allConnections as Array<{ provider?: unknown }>)
           .map((c) => c.provider)
-          .filter((p): p is string => typeof p === "string" && p.length > 0)
+          .filter(
+            (p): p is string =>
+              typeof p === "string" && p.length > 0 && !isRuntimeRetiredProviderId(p)
+          )
       ),
     ];
     // Pre-build a Set of already-present modelStr values so candidate-pool

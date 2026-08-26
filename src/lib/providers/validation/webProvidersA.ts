@@ -1,15 +1,12 @@
-// Web-cookie provider key validators (part A): deepseek-web, qwen-web, grok-web, chatgpt-web,
+// Web-cookie provider key validators (part A): deepseek-web, grok-web, chatgpt-web,
 // perplexity-web, blackbox-web. Extracted from validation.ts (god-file decomposition) — top-level
 // functions with no dispatcher-state captures; behavior is byte-identical to the original inline defs.
-import { addModelsSuffix } from "./urlHelpers";
 import { applyCustomUserAgent } from "./headers";
 import { toValidationErrorResult, validationRead, validationWrite } from "./transport";
 import {
   buildGrokCookieHeader,
-  buildQwenCookieHeader,
   extractCookieValue,
   extractKimiAccessToken,
-  extractQwenToken,
   normalizeSessionCookieHeader,
 } from "@/lib/providers/webCookieAuth";
 
@@ -149,120 +146,6 @@ export async function validateDeepSeekWebProvider({ apiKey }: any) {
     }
     return { valid: true, error: null };
   } catch (error: any) {
-    return toValidationErrorResult(error);
-  }
-}
-
-// qwen-web has no `modelsUrl` in its registry entry, so the generic OpenAI-compatible
-// validator used to derive a probe URL of `https://chat.qwen.ai/api/v2/models/` (via
-// addModelsSuffix) — a non-existent path that answers with a 307 redirect, which the
-// outbound guard blocked and the route then mislabeled as an SSRF block (#3288/#3758).
-//
-// History of the session probe:
-//   - Originally `GET /api/v2/user` (Chat2API-derived). Upstream retired the path
-//     in mid-2026: it now returns `{"success":false,"data":{"code":"not found"}}`
-//     regardless of credentials, so the body-shape check (#3958) always fails.
-//   - Current probe: `GET /api/v1/auths/` (note the trailing slash — without it
-//     the path returns 401). This is the endpoint Qwen's own SPA hits right after
-//     login to fetch the user profile. It returns the user object directly at the
-//     top level: `{ id, email, name, role, ... }`.
-//
-// The validator mirrors the executor's anti-bot headers + cookie-jar replay and uses
-// plain fetch (like the other web-cookie validators) so it never hits the
-// addModelsSuffix/redirect path.
-export async function validateQwenWebProvider({ apiKey }: any) {
-  const rawCred = String(apiKey ?? "").trim();
-  if (!rawCred) {
-    return {
-      valid: false,
-      error:
-        "Missing Qwen session — paste the full chat.qwen.ai Cookie header (must include token, cna and ssxmod_itna)",
-    };
-  }
-
-  const token = extractQwenToken(rawCred);
-  const cookieHeader = buildQwenCookieHeader(rawCred);
-  if (!token && !cookieHeader) {
-    return {
-      valid: false,
-      error: "Could not find a Qwen token/cookie in the pasted value",
-    };
-  }
-
-  try {
-    const headers: Record<string, string> = {
-      Accept: "*/*",
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-      Origin: "https://chat.qwen.ai",
-      Referer: "https://chat.qwen.ai/",
-      source: "web",
-      "bx-v": "2.5.36",
-      // The Qwen SPA's `version` header is required by the v2 chat completion
-      // endpoint; the validator sends it too so the probe matches a real
-      // browser request as closely as possible. (The session probe endpoint
-      // doesn't enforce it, but consistency with the executor avoids surprises
-      // if Qwen ever tightens its WAF rules.)
-      version: "0.2.66",
-    };
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    if (cookieHeader) headers["Cookie"] = cookieHeader;
-
-    // The trailing slash is significant: `/api/v1/auths` (no slash) answers 401,
-    // `/api/v1/auths/` returns the user profile.
-    const resp = await fetch("https://chat.qwen.ai/api/v1/auths/", { headers });
-    const contentType = resp.headers.get("content-type") || "";
-
-    if (resp.status === 401 || resp.status === 403) {
-      return {
-        valid: false,
-        error:
-          "Qwen session is invalid or expired — re-login at https://chat.qwen.ai and paste a fresh full Cookie header",
-      };
-    }
-    // Alibaba's WAF / retired-v1 gateway answers with an HTML challenge page (or 504)
-    // instead of JSON. A bearer token alone is no longer enough for the v2 endpoint.
-    if (contentType.includes("text/html") || resp.status === 504) {
-      return {
-        valid: false,
-        error:
-          "Qwen blocked the request with its anti-bot WAF. Re-login at https://chat.qwen.ai and paste a fresh full Cookie header (must include cna, ssxmod_itna and token) — a bearer token alone is not accepted.",
-      };
-    }
-    if (!resp.ok) {
-      return { valid: false, error: `Qwen returned HTTP ${resp.status}` };
-    }
-
-    // Parse JSON response and verify we have a real user object.
-    // /api/v1/auths/ returns the user at the top level: {id, email, name, role, ...}.
-    // We require `id` to be a non-empty string AND look like a real identifier
-    // (uuid-ish or otherwise ≥8 chars) to avoid false-positives from upstream
-    // error envelopes that happen to ship a top-level `id: "not_found"` style
-    // field. Keep the legacy nested checks (data.user, user) for robustness in
-    // case the upstream shape changes again.
-    try {
-      const data = await resp.json();
-      const hasTopLevelUser =
-        typeof data?.id === "string" && data.id.length >= 8 && typeof data?.email === "string";
-      const hasNestedUser =
-        (typeof data?.user?.id === "string" && data.user.id.length > 0) ||
-        (typeof data?.data?.user?.id === "string" && data.data.user.id.length > 0);
-      if (!hasTopLevelUser && !hasNestedUser) {
-        return {
-          valid: false,
-          error:
-            "Qwen session token is invalid or expired — re-login at https://chat.qwen.ai and paste a fresh full Cookie header",
-        };
-      }
-    } catch (parseError) {
-      return {
-        valid: false,
-        error: "Qwen returned invalid JSON response",
-      };
-    }
-
-    return { valid: true, error: null };
-  } catch (error) {
     return toValidationErrorResult(error);
   }
 }

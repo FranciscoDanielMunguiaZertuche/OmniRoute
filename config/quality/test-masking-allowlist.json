@@ -82,6 +82,30 @@
     "tests/unit/gemini-3-5-flash-thinking.test.ts": {
       "replacement": "tests/unit/gemini-models-parser.test.ts",
       "reason": "v3.8.50 #10286 superseded by 2764812ee4 \"fix(providers): eliminate Gemini 3.5 Flash\": the model was RETIRED on this line, so its thinking-capability regression test (added by #10450 for the pre-retirement behavior) was deleted together with the model's MODEL_SPECS entry, its changelog fragment and its rate-limit config — feature removal by the maintainer, not masking. The replacement pins the NEW contract: \"parseGeminiModelsList excludes retired Gemini 3.5 Flash but keeps Flash Lite\". The gate only sees the deletion because main still carries the pre-retirement file; it prunes itself once v3.8.50 merges to main. Human review: presented to the operator during the v3.8.50 release pre-flight."
+    },
+    "tests/unit/executor-qwen-web.test.ts": {
+      "replacement": "tests/unit/qwen-web-retirement.test.ts",
+      "reason": "v3.8.50 Qwen Web provenance HOLD: the specialized executor and its positive request/stream contract were retired. The replacement proves the exact qwen-web/qw identities have no registry/executor/admission surface and fail closed with 410 instead of falling through to DefaultExecutor; proxy-bypass coverage lives in tests/unit/chatcore-executor-proxy.test.ts. Feature retirement, not masking."
+    },
+    "tests/unit/provider-models-qwen-web-redirect-6267.test.ts": {
+      "replacement": "tests/unit/qwen-web-retirement.test.ts",
+      "reason": "v3.8.50 Qwen Web provenance HOLD: the chat.qwen.ai discovery endpoint was removed with the retired provider. The replacement asserts PROVIDER_MODELS_CONFIG and registry admission remain absent while official qwen-cloud providers remain available. Feature retirement, not masking."
+    },
+    "tests/unit/provider-validation-qwen-web-5855.test.ts": {
+      "replacement": "tests/unit/qwen-web-retirement.test.ts",
+      "reason": "v3.8.50 Qwen Web provenance HOLD: provider-specific validation was removed together with the integration. The replacement locks the new contract that qwen-web/qw cannot be admitted or dispatched and that similarly named legitimate Qwen providers are not tombstoned. Feature retirement, not masking."
+    },
+    "tests/unit/qwen-web-content-array-serialization.test.ts": {
+      "replacement": "tests/unit/qwen-web-retirement.test.ts",
+      "reason": "v3.8.50 Qwen Web provenance HOLD: content-array serialization belonged exclusively to the removed executor. The replacement proves the executor implementation file does not ship and exact retired IDs fail closed before any generic serialization/dispatch path. Feature retirement, not masking."
+    },
+    "tests/unit/qwen-web-cookie-validation-3958.test.ts": {
+      "replacement": "tests/unit/qwen-web-retirement.test.ts",
+      "reason": "v3.8.50 Qwen Web provenance HOLD: cookie validation and web-session credential admission were removed with the provider. The replacement asserts there is no web-session requirement, token extraction config, provider metadata or runtime dispatch for qwen-web/qw. Feature retirement, not masking."
+    },
+    "tests/unit/qwen-web-models-discovery-3931.test.ts": {
+      "replacement": "tests/unit/provider-models-discovery-split.test.ts",
+      "reason": "v3.8.50 Qwen Web provenance HOLD: the retired chat.qwen.ai discovery integration no longer has a positive model-discovery contract. The replacement asserts qwen-web is absent from PROVIDER_MODELS_CONFIG while the remaining discovery providers retain their mappings; tests/unit/qwen-web-retirement.test.ts supplies the end-to-end retirement guard. Feature retirement, not masking."
     }
   },
   "tests/unit/catalog-updates-v3x.test.ts": "v3.8.45 #6248: fix(providers) remove deprecated MiMo V2 entries — os 5 asserts removidos pinavam specs de modelos mimo-v2-* que deixaram de existir no catálogo (54→49). Asserts seguem a remoção dos modelos, não enfraquecimento. Verificado legítimo. Prune após v3.8.45 mergear para main.",

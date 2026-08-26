@@ -430,7 +430,6 @@ const LOBE_PROVIDER_ALIASES = {
   pollinations: "Pollinations",
   qoder: "Qoder",
   qwen: "Qwen",
-  "qwen-web": "Qwen",
   recraft: "Recraft",
   replicate: "Replicate",
   roo: "RooCode",

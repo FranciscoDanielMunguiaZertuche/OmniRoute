@@ -545,16 +545,6 @@
       "configSource": "qoder",
       "provider": "qoder"
     },
-    "qw": {
-      "className": "QwenWebExecutor",
-      "configSource": "<custom-config>",
-      "provider": "qwen-web"
-    },
-    "qwen-web": {
-      "className": "QwenWebExecutor",
-      "configSource": "<custom-config>",
-      "provider": "qwen-web"
-    },
     "raycast": {
       "className": "RaycastExecutor",
       "configSource": "raycast",
@@ -711,6 +701,6 @@
       "provider": "zai-web"
     }
   },
-  "keyCount": 142,
+  "keyCount": 140,
   "sharedInstances": []
 }

@@ -1,3 +1,5 @@
+import { assertRuntimeProviderAvailable } from "@/shared/constants/providerRetirement";
+
 import { SEARCH_PROVIDERS } from "../config/searchRegistry.ts";
 import { registerExecutor, getRegisteredExecutor, hasRegisteredExecutor } from "./registry.ts";
 import type { BaseExecutor } from "./base.ts";
@@ -63,7 +65,6 @@ import { V0VercelWebExecutor } from "./v0-vercel-web.ts";
 import { CheaperInferenceExecutor } from "./cheaperinference.ts";
 import { KimiWebExecutor } from "./kimi-web.ts";
 import { DoubaoWebExecutor } from "./doubao-web.ts";
-import { QwenWebExecutor } from "./qwen-web.ts";
 import { RaycastExecutor } from "./raycast.ts";
 import { HailuoWebExecutor } from "./hailuo-web.ts";
 import { ZaiWebExecutor } from "./zai-web.ts";
@@ -203,7 +204,6 @@ const executors = {
   cinf: new CheaperInferenceExecutor("cheaperinference"), // Alias
   "doubao-web": new DoubaoWebExecutor(),
   db: new DoubaoWebExecutor(), // Alias
-  "qwen-web": new QwenWebExecutor(),
   raycast: new RaycastExecutor(),
   rc: new RaycastExecutor(), // Alias
   "hailuo-web": new HailuoWebExecutor(),
@@ -231,7 +231,6 @@ const executors = {
   xai: new XaiExecutor(),
   "xai-oauth": new XaiExecutor("xai-oauth"),
   xao: new XaiExecutor("xai-oauth"),
-  qw: new QwenWebExecutor(), // Alias
   "conol-web": new ConolWebExecutor(),
   cnl: new ConolWebExecutor(), // Alias
 };
@@ -268,6 +267,8 @@ const CHAT_UNSUPPORTED_CLOUD_AGENT_PROVIDERS = new Set(["jules"]);
 const CHAT_UNSUPPORTED_SEARCH_PROVIDERS = new Set(Object.keys(SEARCH_PROVIDERS));
 
 export function getExecutor(provider) {
+  assertRuntimeProviderAvailable(provider);
+
   const registered = getRegisteredExecutor(provider);
   if (registered) return registered;
   if (CHAT_UNSUPPORTED_CLOUD_AGENT_PROVIDERS.has(provider)) {
@@ -343,7 +344,6 @@ export { AdaptaWebExecutor } from "./adapta-web.ts";
 export { YuanbaoWebExecutor } from "./yuanbao-web.ts";
 export { T3ChatWebExecutor } from "./t3-chat-web.ts";
 export { InnerAiExecutor } from "./inner-ai.ts";
-export { QwenWebExecutor } from "./qwen-web.ts";
 export { HailuoWebExecutor } from "./hailuo-web.ts";
 export { TheOldLlmExecutor } from "./theoldllm.ts";
 export { ChipotleExecutor } from "./chipotle.ts";

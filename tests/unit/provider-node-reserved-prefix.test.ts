@@ -90,6 +90,13 @@ test("shared set contains REGISTRY ids and aliases (tokenrouter + trk)", () => {
   assert.equal(RESERVED_PROVIDER_PREFIXES.has("trk"), true);
 });
 
+test("shared guard keeps retired Qwen Web ids reserved after registry removal", () => {
+  assert.equal(RESERVED_PROVIDER_PREFIXES.has("qwen-web"), true);
+  assert.equal(RESERVED_PROVIDER_PREFIXES.has("qw"), true);
+  assert.equal(isReservedProviderPrefix(" QwEn-WeB "), true);
+  assert.equal(isReservedProviderPrefix("\u00a0QW\uFEFF"), true);
+});
+
 test("shared set is case-sensitive like the runtime guard", () => {
   assert.equal(isReservedProviderPrefix("TokenRouter"), false);
   assert.equal(isReservedProviderPrefix("TOKENROUTER"), false);
@@ -106,13 +113,14 @@ test("shared set excludes manual aliases that never intercept nodes at runtime",
   assert.equal(RESERVED_PROVIDER_PREFIXES.has("aq"), false);
 });
 
-test("shared set size matches full REGISTRY scan (395 unique prefixes)", () => {
+test("shared set size matches registry plus retired tombstones (396 unique prefixes)", () => {
   // Count measured against release/v3.8.50 tip after this merge-batch boarded
   // #11333 (volcengine-coding-plan + volcengine-agent-plan, +4 ids/aliases) on
   // top of the 391 pinned post-upstream-65e81158a (was 329 at c68cda7df) —
-  // the assertion pins that the set is a full REGISTRY walk, not a
-  // hand-maintained list.
-  assert.equal(RESERVED_PREFIX_COUNT, 395);
+  // the assertion pins that the set is a full REGISTRY walk plus the two
+  // permanent Qwen Web tombstones (qw was never a registry alias), not a
+  // stale hand-maintained list.
+  assert.equal(RESERVED_PREFIX_COUNT, 396);
 });
 
 test("isReservedProviderPrefix rejects non-string input", () => {
@@ -146,6 +154,31 @@ test("createProviderNodeSchema rejects reserved alias 'trk'", () => {
     apiType: "chat",
   });
   assert.equal(result.success, false);
+});
+
+test("provider node schemas reject retired Qwen Web prefixes and normalized variants", () => {
+  for (const prefix of ["qwen-web", "qw", " QwEn-WeB ", "\u00a0QW\uFEFF"]) {
+    const created = createProviderNodeSchema.safeParse({
+      name: "Retired prefix",
+      prefix,
+      apiType: "chat",
+    });
+    assert.equal(created.success, false, `create must reject ${JSON.stringify(prefix)}`);
+
+    const updated = updateProviderNodeSchema.safeParse({
+      name: "Retired prefix",
+      prefix,
+      baseUrl: "https://retired.example.invalid/v1",
+    });
+    assert.equal(updated.success, false, `update must reject ${JSON.stringify(prefix)}`);
+
+    const preset = createProviderNodeSchema.safeParse({
+      preset: "vibeproxy-openai",
+      prefix,
+      baseUrl: "http://localhost:8317",
+    });
+    assert.equal(preset.success, false, `preset create must reject ${JSON.stringify(prefix)}`);
+  }
 });
 
 test("createProviderNodeSchema accepts mixed-case 'TokenRouter' (no runtime collision)", () => {
