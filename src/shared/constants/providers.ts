@@ -75,7 +75,6 @@ export function getProviderConnectionFamilyIds(providerId: unknown): readonly st
 
 // Web / Cookie Providers
 
-
 // API Key Providers
 
 // Sub-categories within APIKEY_PROVIDERS (used by dashboard and catalog views).
@@ -144,7 +143,6 @@ export const AGGREGATOR_PROVIDER_IDS = new Set([
   "helixmind",
   "tabitoken",
   "logfare",
-
 ]);
 
 export const ENTERPRISE_CLOUD_PROVIDER_IDS = new Set([
@@ -181,7 +179,7 @@ export const VIDEO_PROVIDER_IDS = new Set([
 // IDE Providers: editors with built-in AI subscription (separate section in UI).
 // These providers live in OAUTH_PROVIDERS but render under "IDE Providers"
 // instead of "OAuth Providers" to avoid visual duplication.
-export const IDE_PROVIDER_IDS = new Set(["cursor", "zed", "trae", "raycast"]);
+export const IDE_PROVIDER_IDS = new Set(["cursor", "zed", "trae"]);
 
 export const EMBEDDING_RERANK_PROVIDER_IDS = new Set(["voyage-ai", "jina-ai"]);
 

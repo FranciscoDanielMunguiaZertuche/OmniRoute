@@ -324,7 +324,7 @@ Moduły warstwy domenowej:
 Moduły dostawców OAuth (22 osobne pliki w `src/lib/oauth/providers/`):
 
 - Indeks rejestru: `src/lib/oauth/providers/index.ts`
-- Poszczególni dostawcy: `agy.ts`, `antigravity.ts`, `claude.ts`, `cline.ts`, `codebuddy-cn.ts`, `codex.ts`, `cursor.ts`, `devin-desktop.ts`, `ghe-copilot.ts`, `github.ts`, `gitlab-duo.ts`, `grok-cli-oauth.ts`, `grok-cli.ts`, `kilocode.ts`, `kimi-coding.ts`, `kiro.ts`, `qoder.ts`, `raycast.ts`, `trae.ts`, `xai-oauth.ts`, `zed-hosted.ts`, `zed.ts`
+- Poszczególni dostawcy: `agy.ts`, `antigravity.ts`, `claude.ts`, `cline.ts`, `codebuddy-cn.ts`, `codex.ts`, `cursor.ts`, `devin-desktop.ts`, `ghe-copilot.ts`, `github.ts`, `gitlab-duo.ts`, `grok-cli-oauth.ts`, `grok-cli.ts`, `kilocode.ts`, `kimi-coding.ts`, `kiro.ts`, `openference.ts`, `qoder.ts`, `trae.ts`, `xai-oauth.ts`, `zed-hosted.ts`, `zed.ts`
 - Cienki wrapper: `src/lib/oauth/providers.ts` — re-eksport z poszczególnych modułów
 
 ## 5) Osadzone usługi (v3.8.4)
@@ -926,7 +926,7 @@ Każdy dostawca ma wyspecjalizowany executor rozszerzający `BaseExecutor` (w `o
 | `PollinationsExecutor`   | Pollinations AI                                                                                                                                             | Klucz API niewymagany, żądania z rate limitem                              |
 | `QoderExecutor`          | Qoder AI                                                                                                                                                    | Wsparcie PAT i OAuth, darmowy tier multi-model                             |
 | `VertexExecutor`         | Google Vertex AI                                                                                                                                            | Auth service account, endpointy oparte na regionie                         |
-| `DevinDesktopExecutor`   | Devin Desktop | Importowany klucz API + strumieniowanie czatu Connect-protobuf |
+| `DevinDesktopExecutor`   | Devin Desktop                                                                                                                                               | Importowany klucz API + strumieniowanie czatu Connect-protobuf             |
 
 Wszystkie pozostałe dostawcy (w tym niestandardowe węzły kompatybilne) używają `DefaultExecutor`.
 
@@ -978,9 +978,9 @@ Wszystkie pozostałe dostawcy (w tym niestandardowe węzły kompatybilne) używa
 | GLMT (preset)     | claude           | API Key                 | ✅               | ✅         | ❌            | ⚠️ Per żądanie     |
 | Kimi Coding       | openai           | OAuth / API Key         | ✅               | ✅         | ✅            | ❌                 |
 | KIE               | openai           | API Key                 | ✅               | ✅         | ❌            | ❌                 |
-| Devin Desktop | openai | Importowany klucz API | ✅ (Connect→SSE) | ✅ | ❌ | ⚠️ Na żądanie |
+| Devin Desktop     | openai           | Importowany klucz API   | ✅ (Connect→SSE) | ✅         | ❌            | ⚠️ Na żądanie      |
 | GitLab Duo        | openai           | OAuth (GitLab)          | ✅               | ✅         | ✅            | ❌                 |
-| Devin CLI | openai | Lokalne logowanie CLI | ✅ | ✅ | ❌ | ✅ Task API |
+| Devin CLI         | openai           | Lokalne logowanie CLI   | ✅               | ✅         | ❌            | ✅ Task API        |
 | Codex Cloud       | openai-responses | OAuth                   | ✅               | ❌         | ✅            | ✅ Rate limity     |
 | Jules             | openai           | OAuth                   | ✅               | ✅         | ✅            | ✅ Task API        |
 | AgentRouter       | openai           | API Key                 | ✅               | ✅         | ❌            | ❌                 |

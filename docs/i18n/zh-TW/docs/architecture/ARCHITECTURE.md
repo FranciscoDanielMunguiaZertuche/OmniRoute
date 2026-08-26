@@ -322,7 +322,7 @@ flowchart LR
 OAuth 提供者模組（`src/lib/oauth/providers/` 下的 22 個個別檔案）：
 
 - 註冊表索引：`src/lib/oauth/providers/index.ts`
-- 個別提供者：`agy.ts`, `antigravity.ts`, `claude.ts`, `cline.ts`, `codebuddy-cn.ts`, `codex.ts`, `cursor.ts`, `devin-desktop.ts`, `ghe-copilot.ts`, `github.ts`, `gitlab-duo.ts`, `grok-cli-oauth.ts`, `grok-cli.ts`, `kilocode.ts`, `kimi-coding.ts`, `kiro.ts`, `qoder.ts`, `raycast.ts`, `trae.ts`, `xai-oauth.ts`, `zed-hosted.ts`, `zed.ts`
+- 個別提供者：`agy.ts`, `antigravity.ts`, `claude.ts`, `cline.ts`, `codebuddy-cn.ts`, `codex.ts`, `cursor.ts`, `devin-desktop.ts`, `ghe-copilot.ts`, `github.ts`, `gitlab-duo.ts`, `grok-cli-oauth.ts`, `grok-cli.ts`, `kilocode.ts`, `kimi-coding.ts`, `kiro.ts`, `openference.ts`, `qoder.ts`, `trae.ts`, `xai-oauth.ts`, `zed-hosted.ts`, `zed.ts`
 - 薄包裝層：`src/lib/oauth/providers.ts` — 從個別模組重新匯出
 
 ## 5) 嵌入式服務（v3.8.4）
@@ -901,7 +901,7 @@ flowchart LR
 | `PollinationsExecutor`   | Pollinations AI                                                                                                                                          | 無需 API 金鑰、速率限制請求                                |
 | `QoderExecutor`          | Qoder AI                                                                                                                                                 | PAT 與 OAuth 支援、多模型免費方案                          |
 | `VertexExecutor`         | Google Vertex AI                                                                                                                                         | 服務帳戶驗證、基於區域的端點                               |
-| `DevinDesktopExecutor` | Devin Desktop | 匯入的 API 金鑰 + Connect-protobuf 聊天串流 |
+| `DevinDesktopExecutor`   | Devin Desktop                                                                                                                                            | 匯入的 API 金鑰 + Connect-protobuf 聊天串流                |
 
 所有其他提供者（包括自訂相容節點）使用 `DefaultExecutor`。
 
@@ -953,9 +953,9 @@ flowchart LR
 | GLMT（預設）       | claude           | API 金鑰              | ✅               | ✅     | ❌       | ⚠️ 每次請求      |
 | Kimi Coding        | openai           | OAuth / API 金鑰      | ✅               | ✅     | ✅       | ❌               |
 | KIE                | openai           | API 金鑰              | ✅               | ✅     | ❌       | ❌               |
-| Devin Desktop | openai | 匯入的 API 金鑰 | ✅ (Connect→SSE) | ✅ | ❌ | ⚠️ 每次請求 |
+| Devin Desktop      | openai           | 匯入的 API 金鑰       | ✅ (Connect→SSE) | ✅     | ❌       | ⚠️ 每次請求      |
 | GitLab Duo         | openai           | OAuth（GitLab）       | ✅               | ✅     | ✅       | ❌               |
-| Devin CLI | openai | 本機 CLI 登入 | ✅ | ✅ | ❌ | ✅ 任務 API |
+| Devin CLI          | openai           | 本機 CLI 登入         | ✅               | ✅     | ❌       | ✅ 任務 API      |
 | Codex Cloud        | openai-responses | OAuth                 | ✅               | ❌     | ✅       | ✅ 速率限制      |
 | Jules              | openai           | OAuth                 | ✅               | ✅     | ✅       | ✅ 任務 API      |
 | AgentRouter        | openai           | API 金鑰              | ✅               | ✅     | ❌       | ❌               |

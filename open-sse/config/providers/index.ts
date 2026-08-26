@@ -24,7 +24,6 @@ import { glmProvider } from "./registry/glm/index.ts";
 import { glmtProvider } from "./registry/glm/t/index.ts";
 import { glm_cnProvider } from "./registry/glm/cn/index.ts";
 import { traeProvider } from "./registry/trae/index.ts";
-import { raycastProvider } from "./registry/raycast/index.ts";
 import { muse_spark_webProvider } from "./registry/muse-spark-web/index.ts";
 import { lmarenaProvider } from "./registry/lmarena/index.ts";
 import { kilocodeProvider } from "./registry/kilocode/index.ts";
@@ -115,7 +114,6 @@ import { perplexityProvider } from "./registry/perplexity/index.ts";
 import { perplexity_webProvider } from "./registry/perplexity/web/index.ts";
 import { minimaxProvider } from "./registry/minimax/index.ts";
 import { minimax_cnProvider } from "./registry/minimax/cn/index.ts";
-import { hailuo_webProvider } from "./registry/minimax/web/index.ts";
 import { haiperProvider } from "./registry/haiper/index.ts";
 import { bytezProvider } from "./registry/bytez/index.ts";
 import { blackboxProvider } from "./registry/blackbox/index.ts";
@@ -292,7 +290,6 @@ export const REGISTRY: Record<string, RegistryEntry> = {
   glmt: glmtProvider,
   "glm-cn": glm_cnProvider,
   trae: traeProvider,
-  raycast: raycastProvider,
   "muse-spark-web": muse_spark_webProvider,
   lmarena: lmarenaProvider,
   kilocode: kilocodeProvider,
@@ -383,7 +380,6 @@ export const REGISTRY: Record<string, RegistryEntry> = {
   "perplexity-web": perplexity_webProvider,
   minimax: minimaxProvider,
   "minimax-cn": minimax_cnProvider,
-  "hailuo-web": hailuo_webProvider,
   haiper: haiperProvider,
   bytez: bytezProvider,
   blackbox: blackboxProvider,

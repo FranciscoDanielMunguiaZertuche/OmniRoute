@@ -2813,29 +2813,6 @@
       "stream": "https://api.groq.com/openai/v1/chat/completions"
     }
   },
-  "hailuo-web": {
-    "format": "openai",
-    "headers": {
-      "apiKey": {
-        "Accept": "text/event-stream",
-        "Authorization": "Bearer <TOK>",
-        "Content-Type": "application/json"
-      },
-      "nonStream": {
-        "Authorization": "Bearer <TOK>",
-        "Content-Type": "application/json"
-      },
-      "oauth": {
-        "Accept": "text/event-stream",
-        "Authorization": "Bearer <TOK>",
-        "Content-Type": "application/json"
-      }
-    },
-    "url": {
-      "nonStream": "https://chat.minimax.io",
-      "stream": "https://chat.minimax.io"
-    }
-  },
   "haiper": {
     "format": "openai",
     "headers": {
@@ -5053,29 +5030,6 @@
     "url": {
       "nonStream": "https://chat.qwen.ai/api/v2/chat/completions",
       "stream": "https://chat.qwen.ai/api/v2/chat/completions"
-    }
-  },
-  "raycast": {
-    "format": "openai",
-    "headers": {
-      "apiKey": {
-        "Accept": "text/event-stream",
-        "Authorization": "Bearer <TOK>",
-        "Content-Type": "application/json"
-      },
-      "nonStream": {
-        "Authorization": "Bearer <TOK>",
-        "Content-Type": "application/json"
-      },
-      "oauth": {
-        "Accept": "text/event-stream",
-        "Authorization": "Bearer <TOK>",
-        "Content-Type": "application/json"
-      }
-    },
-    "url": {
-      "nonStream": "https://backend.raycast.com/api/v1/ai",
-      "stream": "https://backend.raycast.com/api/v1/ai"
     }
   },
   "regolo": {

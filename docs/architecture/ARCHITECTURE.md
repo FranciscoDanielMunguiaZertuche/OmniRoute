@@ -324,7 +324,7 @@ Domain layer modules:
 OAuth provider modules (22 individual files under `src/lib/oauth/providers/`):
 
 - Registry index: `src/lib/oauth/providers/index.ts`
-- Individual providers: `agy.ts`, `antigravity.ts`, `claude.ts`, `cline.ts`, `codebuddy-cn.ts`, `codex.ts`, `cursor.ts`, `devin-desktop.ts`, `ghe-copilot.ts`, `github.ts`, `gitlab-duo.ts`, `grok-cli-oauth.ts`, `grok-cli.ts`, `kilocode.ts`, `kimi-coding.ts`, `kiro.ts`, `qoder.ts`, `raycast.ts`, `trae.ts`, `xai-oauth.ts`, `zed-hosted.ts`, `zed.ts`
+- Individual providers: `agy.ts`, `antigravity.ts`, `claude.ts`, `cline.ts`, `codebuddy-cn.ts`, `codex.ts`, `cursor.ts`, `devin-desktop.ts`, `ghe-copilot.ts`, `github.ts`, `gitlab-duo.ts`, `grok-cli-oauth.ts`, `grok-cli.ts`, `kilocode.ts`, `kimi-coding.ts`, `kiro.ts`, `openference.ts`, `qoder.ts`, `trae.ts`, `xai-oauth.ts`, `zed-hosted.ts`, `zed.ts`
 - Thin wrapper: `src/lib/oauth/providers.ts` — re-exports from individual modules
 
 ## 5) Embedded Services (v3.8.4)
@@ -980,7 +980,7 @@ All other providers (including custom compatible nodes) use the `DefaultExecutor
 | KIE               | openai           | API Key               | ✅               | ✅         | ❌            | ❌                 |
 | Devin Desktop     | openai           | Imported API key      | ✅ (Connect→SSE) | ✅         | ❌            | ⚠️ Per request     |
 | GitLab Duo        | openai           | OAuth (GitLab)        | ✅               | ✅         | ✅            | ❌                 |
-| Devin CLI | openai | Local CLI login | ✅ | ✅ | ❌ | ✅ Task API |
+| Devin CLI         | openai           | Local CLI login       | ✅               | ✅         | ❌            | ✅ Task API        |
 | Codex Cloud       | openai-responses | OAuth                 | ✅               | ❌         | ✅            | ✅ Rate limits     |
 | Jules             | openai           | OAuth                 | ✅               | ✅         | ✅            | ✅ Task API        |
 | AgentRouter       | openai           | API Key               | ✅               | ✅         | ❌            | ❌                 |

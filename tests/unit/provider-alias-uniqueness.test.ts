@@ -62,12 +62,10 @@ test("src/shared providers map resolves the same aliases unambiguously", () => {
   assert.equal(getProviderAlias("kimi"), "kimi");
 });
 
-// #6673: hailuo-web must not collide with the paid API-key minimax/minimax-cn
-// providers — it uses its own id as alias, per the secondary-variant convention.
-test("hailuo-web resolves to its own id/alias and does not collide with minimax", () => {
-  assert.equal(PROVIDER_ID_TO_ALIAS["hailuo-web"], "hailuo-web");
-  assert.equal(resolveProviderId("hailuo-web"), "hailuo-web");
-  assert.equal(getProviderAlias("hailuo-web"), "hailuo-web");
+test("retired Hailuo alias is absent while official MiniMax aliases remain distinct", () => {
+  assert.equal(PROVIDER_ID_TO_ALIAS["hailuo-web"], undefined);
+  assert.equal(PROVIDER_ID_TO_ALIAS.minimax, "minimax");
+  assert.equal(PROVIDER_ID_TO_ALIAS["minimax-cn"], "minimax-cn");
   assert.equal(resolveProviderId("minimax"), "minimax");
   assert.equal(resolveProviderId("minimax-cn"), "minimax-cn");
 });

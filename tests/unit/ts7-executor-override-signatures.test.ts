@@ -5,7 +5,6 @@
  * has nothing to do with `BaseExecutor.buildHeaders(credentials, stream?, clientHeaders?,
  * model?, health?)`:
  *
- *   hailuo-web  (token: string, yy: string)
  *   lmarena     (_model: string, credentials: unknown, _body: unknown)
  *   qwen-web    (token: string, cookieHeader: string, chatId?: string)
  *
@@ -23,12 +22,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { BaseExecutor } from "../../open-sse/executors/base.ts";
-import { HailuoWebExecutor } from "../../open-sse/executors/hailuo-web.ts";
 import { LMArenaExecutor } from "../../open-sse/executors/lmarena.ts";
 import { QwenWebExecutor } from "../../open-sse/executors/qwen-web.ts";
 
 const CASES = [
-  { name: "hailuo-web", make: () => new HailuoWebExecutor(), helper: "buildStreamHeaders" },
   { name: "lmarena", make: () => new LMArenaExecutor(), helper: "buildRequestHeaders" },
   { name: "qwen-web", make: () => new QwenWebExecutor(), helper: "buildApiHeaders" },
 ];

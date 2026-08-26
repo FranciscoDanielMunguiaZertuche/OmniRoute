@@ -332,7 +332,7 @@ Módulos da camada de domínio:
 Módulos do provedor OAuth (22 arquivos individuais em `src/lib/oauth/providers/`):
 
 - Índice do registro: `src/lib/oauth/providers/index.ts`
-- Provedores individuais: `agy.ts`, `antigravity.ts`, `claude.ts`, `cline.ts`, `codebuddy-cn.ts`, `codex.ts`, `cursor.ts`, `devin-desktop.ts`, `ghe-copilot.ts`, `github.ts`, `gitlab-duo.ts`, `grok-cli-oauth.ts`, `grok-cli.ts`, `kilocode.ts`, `kimi-coding.ts`, `kiro.ts`, `qoder.ts`, `raycast.ts`, `trae.ts`, `xai-oauth.ts`, `zed-hosted.ts`, `zed.ts`
+- Provedores individuais: `agy.ts`, `antigravity.ts`, `claude.ts`, `cline.ts`, `codebuddy-cn.ts`, `codex.ts`, `cursor.ts`, `devin-desktop.ts`, `ghe-copilot.ts`, `github.ts`, `gitlab-duo.ts`, `grok-cli-oauth.ts`, `grok-cli.ts`, `kilocode.ts`, `kimi-coding.ts`, `kiro.ts`, `openference.ts`, `qoder.ts`, `trae.ts`, `xai-oauth.ts`, `zed-hosted.ts`, `zed.ts`
 - Wrapper fino: `src/lib/oauth/providers.ts` — re-exportações de módulos individuais
 
 ## Subsistemas Principais (v3.8.0)
@@ -907,7 +907,7 @@ Cada provedor tem um executor especializado que estende `BaseExecutor` (em `open
 | `PollinationsExecutor`   | Pollinations AI                                                                                                                                             | Nenhuma chave de API necessária, requisições limitadas por taxa                      |
 | `QoderExecutor`          | Qoder AI                                                                                                                                                    | Suporte a PAT e OAuth, nível gratuito multi-modelo                                   |
 | `VertexExecutor`         | Google Vertex AI                                                                                                                                            | Autenticação de conta de serviço, endpoints baseados em região                       |
-| `DevinDesktopExecutor` | Devin Desktop | Chave de API importada + streaming de chat Connect-protobuf |
+| `DevinDesktopExecutor`   | Devin Desktop                                                                                                                                               | Chave de API importada + streaming de chat Connect-protobuf                          |
 
 Todos os outros provedores (incluindo nós compatíveis personalizados) usam o `DefaultExecutor`.
 
@@ -960,9 +960,9 @@ Todos os outros provedores (incluindo nós compatíveis personalizados) usam o `
 | GLMT (preset)     | claude           | Chave de API               | ✅               | ✅         | ❌                   | ⚠️ Por solicitação   |
 | Kimi Coding       | openai           | OAuth / Chave de API       | ✅               | ✅         | ✅                   | ❌                   |
 | KIE               | openai           | Chave de API               | ✅               | ✅         | ❌                   | ❌                   |
-| Devin Desktop | openai | Chave de API importada | ✅ (Connect→SSE) | ✅ | ❌ | ⚠️ Por solicitação |
+| Devin Desktop     | openai           | Chave de API importada     | ✅ (Connect→SSE) | ✅         | ❌                   | ⚠️ Por solicitação   |
 | GitLab Duo        | openai           | OAuth (GitLab)             | ✅               | ✅         | ✅                   | ❌                   |
-| Devin CLI | openai | Login local da CLI | ✅ | ✅ | ❌ | ✅ API de Tarefas |
+| Devin CLI         | openai           | Login local da CLI         | ✅               | ✅         | ❌                   | ✅ API de Tarefas    |
 | Codex Cloud       | openai-responses | OAuth                      | ✅               | ❌         | ✅                   | ✅ Limites de taxa   |
 | Jules             | openai           | OAuth                      | ✅               | ✅         | ✅                   | ✅ API de Tarefas    |
 | AgentRouter       | openai           | Chave de API               | ✅               | ✅         | ❌                   | ❌                   |
