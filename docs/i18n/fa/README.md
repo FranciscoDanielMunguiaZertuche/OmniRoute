@@ -217,7 +217,7 @@ npm run system-info
        │   ↓ budget limit
        ├─→ [Tier 3: CHEAP] GLM ($0.6/1M), MiniMax ($0.2/1M)
        │   ↓ budget limit
-       └─→ [Tier 4: FREE] Qoder, Qwen, Kiro (provider limits apply)
+       └─→ [Tier 4: FREE] Qoder, Kiro (provider limits apply)
 
 Result: broader fallback coverage and cost control; availability is not guaranteed
 ```
@@ -287,7 +287,7 @@ OpenAI از یک قالب استفاده می کند، Claude (انتروپیک)
 ** چگونه OmniRoute آن را حل می کند:**
 
 - **Ollama Cloud** - مدل های Ollama میزبان ابر در `api.ollama.com` با سطح رایگان "استفاده از نور". از پیشوند `ollamacloud/<model>` استفاده کنید
-- **ترکیب‌های فقط رایگان** - زنجیره `if/kimi-k2-thinking → qw/qwen3-coder-plus` می‌تواند از دسترسی $0 فهرست‌شده فعلی استفاده کند. محدودیت ها و در دسترس بودن اعمال می شود
+- **ترکیب‌های فقط رایگان** - زنجیره `if/kimi-k2-thinking → kr/qwen3-coder-next` می‌تواند از دسترسی $0 فهرست‌شده فعلی استفاده کند. محدودیت ها و در دسترس بودن اعمال می شود
 - **NVIDIA NIM دسترسی رایگان ** — دسترسی آزاد ~40 RPM همانطور که در حال حاضر لیست شده است. شرایط ارائه دهنده و در دسترس بودن مدل در build.nvidia.com اعمال می شود (انتقال از اعتبار به محدودیت نرخ خالص)
 - **استراتژی بهینه سازی هزینه** - استراتژی مسیریابی که به طور خودکار ارزان ترین ارائه دهنده موجود را انتخاب می کند
 
@@ -348,7 +348,7 @@ OpenAI از یک قالب استفاده می کند، Claude (انتروپیک)
 ** چگونه OmniRoute آن را حل می کند:**
 
 - **بازسازی خودکار توکن** - توکن های OAuth قبل از انقضا در پس زمینه به روز می شوند
-- **OAuth 2.0 (PKCE) داخلی** — جریان خودکار برای Claude Code، Codex، Copilot، Kiro، Qwen و Qoder
+- **OAuth 2.0 (PKCE) داخلی** — جریان خودکار برای Claude Code، Codex، Copilot، Kiro و Qoder
 - ** چند حساب OAuth ** - چندین حساب در هر ارائه دهنده از طریق استخراج رمز JWT/ID
 - **OAuth LAN/Remote Fix** - تشخیص IP خصوصی برای `redirect_uri` + حالت دستی URL برای سرورهای راه دور
 - **OAuth پشت Nginx** — از `window.location.origin` برای سازگاری با پراکسی معکوس استفاده می کند
@@ -701,7 +701,7 @@ Outcome: higher quality, near-zero interruption
 ```txt
 Combo: "free-access"
   1. if/kimi-k2-thinking       (no published token cap; limits apply)
-  2. qw/qwen3-coder-plus       (no published token cap; limits apply)
+  2. kr/qwen3-coder-next
 
 Monthly cost: $0
 Outcome: broader free-access fallback; upstream availability is not guaranteed
@@ -739,7 +739,6 @@ Outcome: deep fallback depth for deadline-critical workloads
 | ---- | -------------------------------------------------- | ------------------------------------------------------------------ |
 | 1 | اتصال **Kiro** (شناسه سازنده AWS OAuth) | Claude Sonnet 4.5، Haiku 4.5 — محدودیت های ارائه دهنده/حساب اعمال می شود |
 | 2 | اتصال **Qoder** (Google OAuth) | kimi-k2-thinking، qwen3-coder-plus، deepseek-r1... — محدودیت های ارائه دهنده/حساب اعمال می شود |
-| 3 | اتصال **Qwen** (کد دستگاه) | qwen3-coder-plus، qwen3-coder-flash... — محدودیت های ارائه دهنده/حساب اعمال می شود |
 | 4 | قالب `/dashboard/combos` → **پشته رایگان (0$)** | همه ارائه دهندگان رایگان را بصورت خودکار |
 
 **کلید IDE/CLI را به:** `http://localhost:20128/v1` · API کلید: `any-string` · انجام شد.
@@ -1153,7 +1152,6 @@ npm run electron:build:linux   # Linux (.AppImage)
 |                     | Kimi K2.5 (Moonshot API) 🆕 | پرداخت به ازای استفاده | هیچکدام | دسترسی مستقیم Moonshot API |
 |                     | Kimi K2 | 9 دلار در ماه آپارتمان | 10 میلیون توکن در ماه | هزینه قابل پیش بینی |
 | **🆓 دسترسی رایگان ** | Qoder | **0$** | محدودیت اعمال می شود | مدل های منتخب؛ شرایط اعمال می شود |
-|                     | Qwen | **0$** | محدودیت اعمال می شود | مدل های منتخب؛ شرایط اعمال می شود |
 |                     | Kiro | **0$** | محدودیت اعتبار/حساب | دسترسی Claude؛ شرایط فعلی اعمال می شود |
 |                     | اعتبار ثبت نام LongCat | **0$** (10 میلیون یکبار مصرف؛ KYC) | یکبار مصرف | کمک هزینه ثبت نام؛ تکرار نشدن |
 |                     | Pollinations AI 🆕 | **0$** (بدون نیاز به کلید) | 1 req/15s | GPT-5، Claude، DeepSeek، Llama 4 |
@@ -1170,7 +1168,6 @@ Kiro (kr/)             → Claude access — account/credit limits apply
 Qoder (if/)            → selected models — no published token cap; rate/account limits apply
 LongCat (lc/)          → LongCat-2.0 — 10M one-time signup credit; KYC required
 Pollinations (pol/)    → GPT-5, Claude, DeepSeek, Llama 4 — no key needed
-Qwen (qw/)             → selected models — no published token cap; rate/account limits apply
 Gemini (gemini/)       → selected free-tier models — current API quotas apply
 Cloudflare AI (cf/)    → Llama 70B, Gemma 3, Mistral — 10K Neurons/day
 Scaleway (scw/)        → Qwen3 235B, Llama 70B — 1M free tokens (EU)
@@ -1210,14 +1207,6 @@ Cerebras (cerebras/)   → Llama/Qwen world-fastest — 1M tok/day
 > روش اتصال پیشنهادی: ** رمز دسترسی شخصی + `qodercli`**. مرورگر OAuth است
 > آزمایشی و به طور پیش فرض غیرفعال است مگر اینکه متغیرهای محیطی `QODER_OAUTH_*` پیکربندی شده باشند.
 
-### 🡑 مدل‌های QWEN (تأیید کد دستگاه)
-
-| مدل | پیشوند | محدود | محدودیت نرخ |
-| ------------------- | ------ | ------------- | ------------------- |
-| `qwen3-coder-plus` | `qw/` | بدون درپوش توکن منتشر شده | ممکن است محدودیت های ارائه دهنده/حساب اعمال شود |
-| `qwen3-coder-flash` | `qw/` | بدون درپوش توکن منتشر شده | ممکن است محدودیت های ارائه دهنده/حساب اعمال شود |
-| `qwen3-coder-next` | `qw/` | بدون درپوش توکن منتشر شده | ممکن است محدودیت های ارائه دهنده/حساب اعمال شود |
-| `vision-model` | `qw/` | بدون درپوش توکن منتشر شده | چند وجهی؛ ممکن است محدودیت های ارائه دهنده/حساب اعمال شود |
 
 ### ⚫ NVIDIA NIM (کلید رایگان API — build.nvidia.com)
 
@@ -1291,7 +1280,6 @@ Cerebras (cerebras/)   → Llama/Qwen world-fastest — 1M tok/day
 > Qoder (اگر/) ← مدل های انتخابی — بدون پوشش توکن منتشر شده. محدودیت اعمال می شود
 > LongCat (lc/) → LongCat-2.0 — 10 میلیون اعتبار ثبت نام یکباره؛ KYC مورد نیاز است
 > Pollinations (pol/) → GPT-5، Claude، DeepSeek، Llama 4 — بدون نیاز به کلید
-> Qwen (qw/) ← مدل‌های انتخابی — بدون درپوش توکن منتشر شده. محدودیت اعمال می شود
 > جمینی (جمینی/) ← مدل های سطح آزاد انتخاب شده — سهمیه های فعلی اعمال می شود
 > Cloudflare AI (cf/) → بیش از 50 مدل — 10 هزار نورون در روز
 > Scaleway (scw/) → Qwen3 235B، Llama 70B — 1 میلیون توکن رایگان (EU)
@@ -1787,17 +1775,6 @@ Models:
   if/deepseek-r1
 ```
 
-### Qwen (4 مدل رایگان از طریق کد دستگاه)
-
-```bash
-Dashboard → Connect Qwen
-→ Device code authorization
-→ Access is subject to current provider limits
-
-Models:
-  qw/qwen3-coder-plus
-  qw/qwen3-coder-flash
-```
 
 ### Kiro (رایگان Claude)
 
@@ -1836,7 +1813,7 @@ Use in CLI: premium-coding
 Name: free-combo
 Models:
   1. if/kimi-k2-thinking (no published token cap; provider limits may apply)
-  2. qw/qwen3-coder-plus (no published token cap; provider limits may apply)
+  2. kr/qwen3-coder-next
 
 Cost: currently listed as $0; terms and availability may change
 ```

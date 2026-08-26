@@ -184,7 +184,6 @@ These providers offer **free access** with no credit card:
 | **Cloudflare AI** | 10K neurons/day  | 50+ models                               | No auth needed |
 | **NVIDIA NIM**    | ~40 RPM          | 129 models                               | API key needed |
 | **Cerebras**      | 1M tokens/day    | Qwen3 235B, GPT-OSS 120B                 | API key needed |
-| **Qwen**          | Unlimited        | Qwen3-coder-plus/flash/next              | No auth needed |
 | **Qoder**         | Unlimited        | Kimi-K2, DeepSeek-R1, Qwen3-coder        | No auth needed |
 
 **Tip**: Connect multiple free providers for **unlimited free AI** with automatic fallback!

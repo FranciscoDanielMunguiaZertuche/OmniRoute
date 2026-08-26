@@ -726,7 +726,7 @@ podman compose --profile base up -d --build
 | 💳 **订阅制**              | Claude Code Pro / Codex / Copilot        | $10–200/月                    |
 | 🔑 **API Key（含免费层）** | NVIDIA NIM、Cerebras、Groq               | **免费**                      |
 | 💰 **廉价**                | GLM-5 $0.5/1M · MiniMax M2.5 $0.3/1M     | 几分钱                        |
-| 🆓 **免费访问／注册额度**  | Kiro、Qoder、Qwen、Pollinations、LongCat | **当前列为 $0；各自限制适用** |
+| 🆓 **免费访问／注册额度**  | Kiro、Qoder、Pollinations、LongCat | **当前列为 $0；各自限制适用** |
 
 **免费访问示例 — 可合并为一条具有多层回退的 Combo：**
 
@@ -734,7 +734,6 @@ podman compose --profile base up -d --build
 | ----------------- | ----------- | ----------------------------------------------- | ------------------------------------- |
 | **Kiro**          | `kr/`       | Claude Sonnet 4.5、Haiku 4.5、Opus 4.6          | 50 积分/月                            |
 | **Qoder**         | `if/`       | kimi-k2-thinking、qwen3-coder-plus、deepseek-r1 | 未公布 Token 上限；账户／速率限制适用 |
-| **Qwen**          | `qw/`       | qwen3-coder-plus/flash/next                     | 未公布 Token 上限；账户／速率限制适用 |
 | **Pollinations**  | `pol/`      | GPT-5、Claude、Gemini、DeepSeek、Llama 4        | 无需密钥                              |
 | **LongCat**       | `lc/`       | LongCat-2.0                                     | 一次性 10M (需 KYC)                   |
 | **Cloudflare AI** | `cf/`       | 50+ 模型                                        | 10K 神经元/天                         |

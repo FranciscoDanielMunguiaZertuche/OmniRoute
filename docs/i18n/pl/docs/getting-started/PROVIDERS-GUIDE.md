@@ -76,7 +76,6 @@ Te providery oferują **darmowy dostęp** bez karty kredytowej:
 | **Cloudflare AI** | 10K neurons/dzień | 50+ modeli                               | Bez auth           |
 | **NVIDIA NIM**    | ~40 RPM           | 129 modeli                               | Wymagany klucz API |
 | **Cerebras**      | 1M tokenów/dzień  | Qwen3 235B, GPT-OSS 120B                 | Wymagany klucz API |
-| **Qwen**          | Brak opublikowanego capu; limity obowiązują | Qwen3-coder-plus/flash/next | Bez auth |
 | **Qoder**         | Brak opublikowanego capu; limity obowiązują | Kimi-K2, DeepSeek-R1, Qwen3-coder | Bez auth |
 
 **Wskazówka**: Podłącz kilka darmowych providerów, aby zwiększyć pokrycie fallbacku.
