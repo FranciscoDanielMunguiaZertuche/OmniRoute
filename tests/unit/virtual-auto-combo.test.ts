@@ -245,3 +245,42 @@ test("createVirtualAutoCombo keeps credential-required providers out when discon
     "OpenAI should still require a real active connection"
   );
 });
+
+test("createVirtualAutoCombo excludes trigger-bypassed Microsoft Designer connections exactly", async () => {
+  await core.ensureDbInitialized();
+  const db = core.getDbInstance();
+  db.exec("DROP TRIGGER IF EXISTS trg_retire_microsoft_designer_web_provider_insert");
+  db.exec("DROP TRIGGER IF EXISTS trg_retire_microsoft_designer_web_provider_update");
+
+  for (const [provider, model] of [
+    ["microsoft-designer-web", "dall-e-3"],
+    ["msdesigner", "dall-e-3"],
+    ["microsoft-designer-web-preview", "preview-model"],
+  ] as const) {
+    await providersDb.createProviderConnection({
+      provider,
+      authType: "apikey",
+      name: `${provider}-trigger-bypass`,
+      apiKey: `sk-${provider}-test`,
+      providerSpecificData: { accessToken: `${provider}-token` },
+      defaultModel: model,
+      isActive: true,
+    });
+  }
+
+  const combo: VirtualComboResult = await virtualFactory.createVirtualAutoCombo("coding");
+
+  assert.equal(
+    combo.models.some((model) =>
+      ["microsoft-designer-web", "msdesigner"].includes(model.providerId)
+    ),
+    false
+  );
+  assert.equal(combo.autoConfig.candidatePool.includes("microsoft-designer-web"), false);
+  assert.equal(combo.autoConfig.candidatePool.includes("msdesigner"), false);
+  assert.equal(
+    combo.models.some((model) => model.providerId === "microsoft-designer-web-preview"),
+    true,
+    "a merely similar provider ID must remain eligible"
+  );
+});

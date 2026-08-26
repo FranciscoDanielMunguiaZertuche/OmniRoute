@@ -30,13 +30,19 @@ test("token-kind web sessions WITHOUT a token-aware validator stay off the API-k
   assert.equal(shouldUseApiKeyConnectionTest("cookie", "hailuo-web"), false);
   assert.equal(shouldUseApiKeyConnectionTest("cookie", "promptql"), false);
 
-  // Same reasoning applies to the other two token-kind providers with no validator.
-  assert.equal(shouldUseApiKeyConnectionTest("cookie", "microsoft-designer-web"), false);
+  // Same reasoning applies to the remaining token-kind provider with no validator.
   assert.equal(shouldUseApiKeyConnectionTest("cookie", "t3-chat-web"), false);
 });
 
 test("every token-kind web session with a real token-aware validator uses the API-key test path", () => {
-  for (const providerId of ["deepseek-web", "kimi-web", "tinycms-web", "copilot-m365-web", "copilot-web", "zai-web"]) {
+  for (const providerId of [
+    "deepseek-web",
+    "kimi-web",
+    "tinycms-web",
+    "copilot-m365-web",
+    "copilot-web",
+    "zai-web",
+  ]) {
     assert.equal(shouldUseApiKeyConnectionTest("cookie", providerId), true, providerId);
   }
 });

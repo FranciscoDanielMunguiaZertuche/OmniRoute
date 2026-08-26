@@ -30,6 +30,7 @@ import {
   extractImageEditInputFromJson,
   validateCodexImageEditReferences,
 } from "@/lib/images/imageRouteModel";
+import { isMicrosoftDesignerWebProviderRetiredError } from "@/shared/constants/designerWebRetirement";
 import { resolveProxyForConnection } from "@/lib/localDb";
 import { runWithProxyContext } from "@omniroute/open-sse/utils/proxyFetch.ts";
 import { isCodexFreePlan } from "@omniroute/open-sse/executors/codex/tools.ts";
@@ -363,7 +364,15 @@ async function postHandler(request: Request, _context?: unknown) {
 
   // Resolve combo/alias, custom-provider prefix, and built-in ids consistently with
   // /v1/images/generations (#3215).
-  const resolvedModel = await resolveImageRouteModel(fullModel);
+  let resolvedModel: string;
+  try {
+    resolvedModel = await resolveImageRouteModel(fullModel);
+  } catch (error) {
+    if (isMicrosoftDesignerWebProviderRetiredError(error)) {
+      return errorResponse(HTTP_STATUS.GONE, error.message);
+    }
+    throw error;
+  }
   const parsed = parseImageModel(resolvedModel);
   const providerConfig = parsed.provider ? getImageProvider(parsed.provider) : null;
   // Firefly nano/gpt-image accept multiple reference blobs; other non-Codex stay at 1.

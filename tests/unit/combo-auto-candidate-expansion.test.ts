@@ -14,6 +14,7 @@ process.env.DATA_DIR = TEST_DATA_DIR;
 
 const core = await import("../../src/lib/db/core.ts");
 const providersDb = await import("../../src/lib/db/providers.ts");
+const modelsDb = await import("../../src/lib/db/models.ts");
 const combo = await import("../../open-sse/services/combo.ts");
 const providerModels = await import("../../open-sse/config/providerModels.ts");
 
@@ -208,4 +209,37 @@ test("expandAutoComboCandidatePool does not duplicate an already-present modelSt
   // …and the original pinned entry (weight 5 / conn-1) is preserved, not overwritten.
   assert.equal(matches[0].connectionId, "conn-1");
   assert.equal(matches[0].weight, 5);
+});
+
+test("expandAutoComboCandidatePool excludes trigger-bypassed Microsoft Designer providers", async () => {
+  await core.ensureDbInitialized();
+  const db = core.getDbInstance();
+  db.exec("DROP TRIGGER IF EXISTS trg_retire_microsoft_designer_web_provider_insert");
+  db.exec("DROP TRIGGER IF EXISTS trg_retire_microsoft_designer_web_provider_update");
+
+  for (const provider of ["microsoft-designer-web", "msdesigner", "openai"]) {
+    await providersDb.createProviderConnection({
+      provider,
+      authType: "apikey",
+      name: `${provider}-trigger-bypass`,
+      apiKey: `sk-${provider}-test`,
+      defaultModel: provider === "openai" ? "gpt-4o-mini" : "dall-e-3",
+      isActive: true,
+    });
+    if (provider !== "openai") {
+      await modelsDb.addCustomModel(provider, "designer-chat-bypass", "Bypass model");
+    }
+  }
+
+  const expanded = await combo.expandAutoComboCandidatePool([], { config: {} });
+
+  assert.equal(
+    expanded.some((target) => ["microsoft-designer-web", "msdesigner"].includes(target.provider)),
+    false
+  );
+  assert.equal(
+    expanded.some((target) => target.provider === "openai"),
+    true,
+    "supported active providers must remain expandable"
+  );
 });

@@ -1,4 +1,5 @@
 import { SEARCH_PROVIDERS } from "../config/searchRegistry.ts";
+import { assertMicrosoftDesignerWebProviderAvailable } from "@/shared/constants/designerWebRetirement";
 import { registerExecutor, getRegisteredExecutor, hasRegisteredExecutor } from "./registry.ts";
 import type { BaseExecutor } from "./base.ts";
 import { AntigravityExecutor } from "./antigravity.ts";
@@ -46,7 +47,6 @@ import { DeepSeekWebWithAutoRefreshExecutor } from "./deepseek-web-with-auto-ref
 import { AdaptaWebExecutor } from "./adapta-web.ts";
 import { CopilotWebExecutor } from "./copilot-web.ts";
 import { CopilotM365WebExecutor } from "./copilot-m365-web.ts";
-import { MicrosoftDesignerWebExecutor } from "./microsoft-designer-web.ts";
 import { AdobeFireflyExecutor } from "./adobe-firefly.ts";
 import { VeoAIFreeWebExecutor } from "./veoaifree-web.ts";
 import { DuckDuckGoWebExecutor } from "./duckduckgo-web.ts";
@@ -162,8 +162,6 @@ const executors = {
   "copilot-web": new CopilotWebExecutor(),
   "copilot-m365-web": new CopilotM365WebExecutor(),
   copilot: new CopilotWebExecutor(), // Alias
-  "microsoft-designer-web": new MicrosoftDesignerWebExecutor(),
-  msdesigner: new MicrosoftDesignerWebExecutor(), // Alias
   "adobe-firefly": new AdobeFireflyExecutor(),
   firefly: new AdobeFireflyExecutor(), // Alias
   "veoaifree-web": new VeoAIFreeWebExecutor(),
@@ -268,6 +266,7 @@ const CHAT_UNSUPPORTED_CLOUD_AGENT_PROVIDERS = new Set(["jules"]);
 const CHAT_UNSUPPORTED_SEARCH_PROVIDERS = new Set(Object.keys(SEARCH_PROVIDERS));
 
 export function getExecutor(provider) {
+  assertMicrosoftDesignerWebProviderAvailable(provider);
   const registered = getRegisteredExecutor(provider);
   if (registered) return registered;
   if (CHAT_UNSUPPORTED_CLOUD_AGENT_PROVIDERS.has(provider)) {
@@ -331,7 +330,6 @@ export { DevinCliAgenticExecutor } from "./devin-cli-agentic.ts";
 export { AuggieExecutor } from "./auggie.ts";
 export { CopilotWebExecutor } from "./copilot-web.ts";
 export { CopilotM365WebExecutor } from "./copilot-m365-web.ts";
-export { MicrosoftDesignerWebExecutor } from "./microsoft-designer-web.ts";
 export { AdobeFireflyExecutor } from "./adobe-firefly.ts";
 export { VeoAIFreeWebExecutor } from "./veoaifree-web.ts";
 export { DuckDuckGoWebExecutor } from "./duckduckgo-web.ts";

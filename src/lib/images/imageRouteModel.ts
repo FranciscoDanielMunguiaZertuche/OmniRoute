@@ -19,6 +19,7 @@ import { resolveComboTargets } from "@omniroute/open-sse/services/combo.ts";
 
 import { getComboByName, getCombos } from "@/lib/db/combos";
 import { getCachedProviderNodes } from "@/lib/localDb";
+import { assertMicrosoftDesignerWebProviderAvailable } from "@/shared/constants/designerWebRetirement";
 
 /**
  * Rewrite a `prefix/model` custom image model to its internal `<nodeId>/<model>` form.
@@ -32,6 +33,7 @@ export async function resolveImageModelPrefix(modelStr: string): Promise<string>
   if (slash <= 0) return modelStr;
 
   const prefixPart = modelStr.slice(0, slash);
+  assertMicrosoftDesignerWebProviderAvailable(prefixPart);
   const rest = modelStr.slice(slash + 1);
   if (!rest) return modelStr;
 
@@ -75,6 +77,8 @@ export async function resolveSingleImageComboTarget(name: string): Promise<strin
  */
 export async function resolveImageRouteModel(modelStr: string): Promise<string> {
   if (typeof modelStr !== "string" || !modelStr.trim()) return modelStr;
+  const slash = modelStr.indexOf("/");
+  assertMicrosoftDesignerWebProviderAvailable(slash > 0 ? modelStr.slice(0, slash) : modelStr);
   const parsedModel = parseImageModel(modelStr);
   const hasSlash = modelStr.includes("/");
 

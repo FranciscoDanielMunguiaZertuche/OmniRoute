@@ -135,6 +135,7 @@ import { generateRequestId } from "../../shared/utils/requestId";
 import { logAuditEvent } from "../../lib/compliance/index";
 import { enforceApiKeyPolicy } from "../../shared/utils/apiKeyPolicy";
 import { hasProviderQuotaBypassScope } from "../../shared/constants/apiKeyPolicyScopes";
+import { isMicrosoftDesignerWebProviderRetiredError } from "../../shared/constants/designerWebRetirement";
 import { cloneBoundedForLog } from "@omniroute/open-sse/utils/requestLogger.ts";
 import { handleInternalUsageCommand } from "@/lib/usage/internalUsageCommand";
 import {
@@ -948,7 +949,15 @@ async function handleChatImplementation(
       // prefix may differ from the credential provider ID (e.g. model
       // "xiaomi/mimo-v2-flash" resolves to provider "xiaomi" but the combo
       // target specifies providerId: "opengate" for credential lookup).
-      const modelInfo = await getModelInfo(modelString);
+      let modelInfo;
+      try {
+        modelInfo = await getModelInfo(modelString);
+      } catch (error) {
+        // Persisted explicit combos may still reference the retired provider. Treat
+        // that target as unavailable so priority/fallback strategies can continue.
+        if (isMicrosoftDesignerWebProviderRetiredError(error)) return false;
+        throw error;
+      }
       // Apply the same prefix-override guard as handleSingleModelChat:
       // if providerId is just the prefix already in the model string, use
       // the fully-resolved modelInfo.provider for a precise credential check.

@@ -287,18 +287,6 @@ export const IMAGE_PROVIDERS: Record<string, ImageProviderConfig> = {
     supportedSizes: ["1024x1024", "1024x1792", "1792x1024", "1024x1536", "1536x1024"],
   },
 
-  "microsoft-designer-web": {
-    id: "microsoft-designer-web",
-    alias: "msdesigner",
-    baseUrl:
-      "https://designerapp.officeapps.live.com/designerapp/DallE.ashx?action=GetDallEImagesCogSci",
-    authType: "apikey",
-    authHeader: "bearer",
-    format: "designer-web",
-    models: [{ id: "dall-e-3", name: "DALL-E 3 (Microsoft Designer Web)" }],
-    supportedSizes: ["1024x1024", "1792x1024", "1024x1792"],
-  },
-
   xai: {
     id: "xai",
     baseUrl: "https://api.x.ai/v1/images/generations",
@@ -925,7 +913,10 @@ export function parseImageModel(modelStr) {
 
   // No provider prefix — try to find the model in every provider, excluding cookie-auth (web) bridges
   for (const [providerId, config] of Object.entries(IMAGE_PROVIDERS)) {
-    if (config.authHeader !== "cookie" && (config.routingAliases?.includes(modelStr) || config.models.some((m) => m.id === modelStr))) {
+    if (
+      config.authHeader !== "cookie" &&
+      (config.routingAliases?.includes(modelStr) || config.models.some((m) => m.id === modelStr))
+    ) {
       return { provider: providerId, model: modelStr };
     }
   }

@@ -11,9 +11,10 @@
 //
 // The reserved set is shared between the runtime guard and the validation
 // schemas via src/shared/constants/reservedProviderPrefixes.ts (single source of
-// truth). Set semantics mirror the old inline guard exactly:
-//   - REGISTRY entry ids + aliases only;
-//   - case-sensitive (mixed-case "TokenRouter" does NOT collide at runtime);
+// truth). Live set semantics mirror the old inline guard exactly; exact retired
+// ids remain reserved after registry removal and use trim + lowercase matching:
+//   - REGISTRY entry ids + aliases, plus retired ids;
+//   - live ids remain case-sensitive (mixed-case "TokenRouter" does NOT collide);
 //   - manual alias ids that live outside REGISTRY (xiaomi/llamacpp/aq) are NOT
 //     included — verified they do not intercept nodes at runtime.
 import test from "node:test";
@@ -106,13 +107,13 @@ test("shared set excludes manual aliases that never intercept nodes at runtime",
   assert.equal(RESERVED_PROVIDER_PREFIXES.has("aq"), false);
 });
 
-test("shared set size matches full REGISTRY scan (395 unique prefixes)", () => {
+test("shared set size includes live REGISTRY and 2 retired Designer prefixes", () => {
   // Count measured against release/v3.8.50 tip after this merge-batch boarded
   // #11333 (volcengine-coding-plan + volcengine-agent-plan, +4 ids/aliases) on
   // top of the 391 pinned post-upstream-65e81158a (was 329 at c68cda7df) —
-  // the assertion pins that the set is a full REGISTRY walk, not a
-  // hand-maintained list.
-  assert.equal(RESERVED_PREFIX_COUNT, 395);
+  // the assertion pins the full REGISTRY walk plus the exact retired id/alias
+  // that must remain unavailable for compatible-node shadowing.
+  assert.equal(RESERVED_PREFIX_COUNT, 397);
 });
 
 test("isReservedProviderPrefix rejects non-string input", () => {

@@ -17,13 +17,11 @@ process.env.DATA_DIR = testDataDir;
 // Dynamic imports AFTER DATA_DIR is set so core.ts picks up the temp path.
 const coreDb = await import("../../src/lib/db/core.ts");
 const upstreamProxyDb = await import("../../src/lib/db/upstreamProxy.ts");
-const { resolveExecutorWithProxy } = await import(
-  "../../open-sse/handlers/chatCore/executorProxy.ts"
-);
+const { resolveExecutorWithProxy } =
+  await import("../../open-sse/handlers/chatCore/executorProxy.ts");
 const { getExecutor } = await import("../../open-sse/executors/index.ts");
-const { clearUpstreamProxyConfigCache } = await import(
-  "../../open-sse/handlers/chatCore/comboContextCache.ts"
-);
+const { clearUpstreamProxyConfigCache } =
+  await import("../../open-sse/handlers/chatCore/comboContextCache.ts");
 
 before(async () => {
   await coreDb.ensureDbInitialized();
@@ -136,4 +134,23 @@ test("connection override wins over provider mode 'fallback'", async () => {
   });
   // Connection override short-circuits to the passthrough executor, not the fallback wrapper.
   assert.equal(exec, getExecutor("cliproxyapi"));
+});
+
+test("connection proxy overrides cannot bypass Microsoft Designer retirement", async () => {
+  for (const providerId of ["microsoft-designer-web", "  MSDESIGNER\t"]) {
+    for (const providerSpecificData of [
+      { cliproxyapiMode: "claude-native" },
+      { darioMode: "claude-native" },
+    ]) {
+      await assert.rejects(
+        () => resolveExecutorWithProxy(providerId, undefined, providerSpecificData),
+        (error: unknown) => {
+          assert.ok(error instanceof Error);
+          assert.equal((error as Error & { status?: number }).status, 410);
+          assert.equal(error.message, "Provider has been retired from OmniRoute runtime.");
+          return true;
+        }
+      );
+    }
+  }
 });

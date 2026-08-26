@@ -24,6 +24,11 @@ import { getAllCustomModels } from "@/lib/db/models";
 import { resolveProxyForConnection } from "@/lib/db/settings";
 import { resolveImageRouteModel } from "@/lib/images/imageRouteModel";
 import {
+  isMicrosoftDesignerWebProviderRetiredError,
+  isMicrosoftDesignerWebRetiredProviderId,
+  MICROSOFT_DESIGNER_WEB_RETIRED_MESSAGE,
+} from "@/shared/constants/designerWebRetirement";
+import {
   resolveLocalSyncedEndpointRoute,
   type LocalSyncedEndpointRoute,
 } from "@/lib/providerModels/syncedEndpointRouting";
@@ -122,21 +127,20 @@ async function postHandler(request, context) {
   const policy = await enforceApiKeyPolicy(request, body.model);
   if (policy.rejection) return policy.rejection;
 
+  const modelPrefix = body.model.includes("/")
+    ? body.model.slice(0, body.model.indexOf("/"))
+    : body.model;
+  if (isMicrosoftDesignerWebRetiredProviderId(modelPrefix)) {
+    return errorResponse(HTTP_STATUS.GONE, MICROSOFT_DESIGNER_WEB_RETIRED_MESSAGE);
+  }
+
   // #9239: Detect combo name and divert to full image combo execution.
   // Checks before resolveImageRouteModel so we skip single-target flattening.
   if (body.model && typeof body.model === "string" && !body.model.includes("/")) {
     const combo = await getComboByName(body.model as string);
     if (combo) {
-      const { executeImageCombo } = await import(
-        "@omniroute/open-sse/services/imageCombo"
-      );
-      return executeImageCombo(
-        body.model as string,
-        body,
-        { request, policy },
-        startTime,
-        log
-      );
+      const { executeImageCombo } = await import("@omniroute/open-sse/services/imageCombo");
+      return executeImageCombo(body.model as string, body, { request, policy }, startTime, log);
     }
   }
 
@@ -144,7 +148,14 @@ async function postHandler(request, context) {
   // model (`myImg/gpt-image-2`) to its internal `<nodeId>/<model>` form so the
   // custom-model lookup and handler's resolvedProvider extraction resolve correctly.
   // Built-in and already-internal ids pass through unchanged. Shared with /images/edits.
-  body.model = await resolveImageRouteModel(body.model);
+  try {
+    body.model = await resolveImageRouteModel(body.model);
+  } catch (error) {
+    if (isMicrosoftDesignerWebProviderRetiredError(error)) {
+      return errorResponse(HTTP_STATUS.GONE, error.message);
+    }
+    throw error;
+  }
 
   // Parse model to get provider
   let { provider, model: requestedModel } = parseImageModel(body.model);
@@ -246,7 +257,8 @@ async function postHandler(request, context) {
       provider,
       null,
       syncedEndpointRoute?.connectionIds ?? null,
-      requestedModel    );
+      requestedModel
+    );
     if (!credentials) {
       return errorResponse(
         HTTP_STATUS.BAD_REQUEST,
@@ -346,7 +358,10 @@ async function postHandler(request, context) {
     });
   }
 
-  const errorPayload = toJsonErrorPayload((result as any).error, "Image generation provider error") as {
+  const errorPayload = toJsonErrorPayload(
+    (result as any).error,
+    "Image generation provider error"
+  ) as {
     error?: { message?: string };
   };
   const message =

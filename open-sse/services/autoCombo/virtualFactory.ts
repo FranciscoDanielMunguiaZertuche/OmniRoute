@@ -6,6 +6,7 @@ import { getSettings } from "@/lib/db/settings";
 import { getProviderRegistry } from "./providerRegistryAccessor";
 import type { ConnectionFields } from "@/lib/db/encryption";
 import { NOAUTH_PROVIDERS } from "@/shared/constants/providers";
+import { isMicrosoftDesignerWebRetiredProviderId } from "@/shared/constants/designerWebRetirement";
 import { hasUsableWebSessionCredential } from "@/shared/providers/webSessionCredentials";
 import { toNumber } from "@/shared/utils/numeric";
 import { isCompatibleProviderConnectionId } from "@/shared/utils/compatibleProviderId";
@@ -503,19 +504,22 @@ export async function prepareVirtualAutoComboInputs(
       .filter((conn) => conn.provider in NOAUTH_PROVIDERS)
       .map((conn) => conn.provider)
   );
+  const runtimeConnections = connections.filter(
+    (connection) => !isMicrosoftDesignerWebRetiredProviderId(connection.provider)
+  );
   const hiddenModelsMap = getHiddenModelsByProvider();
   // #7622: a no-auth provider's own provider_connections row (#6557) can carry
   // `providerSpecificData.excludedModels` regardless of its isActive state (the
   // dispatch-time enforcement in auth.ts does not gate on isActive either), so
   // gather it from BOTH the active and disabled connection lists.
   const noAuthProviderSpecificData = new Map<string, Record<string, unknown> | null | undefined>();
-  for (const conn of [...connections, ...disabledNoAuthConnections]) {
+  for (const conn of [...runtimeConnections, ...disabledNoAuthConnections]) {
     if (conn.provider in NOAUTH_PROVIDERS) {
       noAuthProviderSpecificData.set(conn.provider, conn.providerSpecificData);
     }
   }
 
-  const validConnections = connections.filter(hasUsableConnectionCredential);
+  const validConnections = runtimeConnections.filter(hasUsableConnectionCredential);
 
   const candidatePool: VirtualAutoComboCandidate[] = [];
   const registry = getProviderRegistry();
@@ -602,7 +606,7 @@ export async function prepareVirtualAutoComboInputs(
   // #7623: honor existing model lockouts + connection cooldown/terminal state so
   // auto/* never advertises models the dispatch path would immediately skip.
   const connectionsById = new Map<string, ConnectionResilienceView>();
-  for (const conn of [...connections, ...disabledNoAuthConnections]) {
+  for (const conn of [...runtimeConnections, ...disabledNoAuthConnections]) {
     connectionsById.set(conn.id, conn);
   }
 

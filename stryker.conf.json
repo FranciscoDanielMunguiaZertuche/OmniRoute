@@ -263,7 +263,6 @@
       "tests/unit/mcp-connect-scope.test.ts",
       "tests/unit/memory-embedding-remote.test.ts",
       "tests/unit/memory-embedding-transformers.test.ts",
-      "tests/unit/microsoft-designer-web-6672.test.ts",
       "tests/unit/middleware-header-strip-5849.test.ts",
       "tests/unit/middleware-hooks-error-sanitization.test.ts",
       "tests/unit/model-catalog-runtime-invalidation.test.ts",

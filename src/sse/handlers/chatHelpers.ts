@@ -35,6 +35,7 @@ import {
 } from "../../shared/utils/circuitBreaker";
 import { classify429FromError, type FailureKind } from "../../shared/utils/classify429";
 import { resolveUseUpstream429BreakerHints } from "../../shared/utils/providerHints";
+import { isMicrosoftDesignerWebProviderRetiredError } from "../../shared/constants/designerWebRetirement";
 
 import { logProxyEvent } from "../../lib/proxyLogger";
 import { logTranslationEvent } from "../../lib/translatorEvents";
@@ -120,7 +121,15 @@ export async function resolveModelOrError(
   endpointPath: string = "",
   requestHeaders: Record<string, unknown> | null | undefined = null
 ) {
-  const modelInfo = await getModelInfo(modelStr);
+  let modelInfo;
+  try {
+    modelInfo = await getModelInfo(modelStr);
+  } catch (error) {
+    if (isMicrosoftDesignerWebProviderRetiredError(error)) {
+      return { error: errorResponse(HTTP_STATUS.GONE, error.message) };
+    }
+    throw error;
+  }
   const sourceFormat = detectFormatFromEndpoint(body, endpointPath);
 
   if (
