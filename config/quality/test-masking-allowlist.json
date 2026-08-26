@@ -83,7 +83,7 @@
     },
     "tests/unit/edgetts-provider.test.ts": {
       "replacement": "tests/unit/edgetts-retirement.test.ts",
-      "reason": "v3.8.50 pending PR: the EdgeTTS executor and its positive protocol tests were retired together after a provenance/licensing HOLD. The replacement pins the new public contract across the speech registry, handler and UI-derived catalog while preserving gTTS, AWS Polly and ElevenLabs. Feature retirement, not test masking; prune after v3.8.50 merges to main."
+      "reason": "v3.8.50 #11711: the EdgeTTS executor and its positive protocol tests were retired together after a provenance/licensing HOLD. The replacement pins the new public contract across the speech registry, handler and UI-derived catalog while preserving gTTS, AWS Polly and ElevenLabs. Feature retirement, not test masking; prune after v3.8.50 merges to main."
     }
   },
   "tests/unit/catalog-updates-v3x.test.ts": "v3.8.45 #6248: fix(providers) remove deprecated MiMo V2 entries — os 5 asserts removidos pinavam specs de modelos mimo-v2-* que deixaram de existir no catálogo (54→49). Asserts seguem a remoção dos modelos, não enfraquecimento. Verificado legítimo. Prune após v3.8.45 mergear para main.",
