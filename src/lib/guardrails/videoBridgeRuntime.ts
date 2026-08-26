@@ -8,8 +8,14 @@ import {
   extractEmbeddedVideoTranscript,
   VIDEO_EMBEDDED_SUBTITLE_CODECS,
   type EmbeddedVideoTranscript,
+  type EmbeddedVideoTranscriptOutcome,
   type VideoEmbeddedSubtitleStream,
 } from "./videoBridgeTranscript";
+import {
+  assertVideoContainerFormatAllowed,
+  parseVideoProbeMetadata,
+  SAFE_VIDEO_FORMAT_WHITELIST,
+} from "./videoBridgeProbeMetadata";
 
 const execFileAsync = promisify(execFile);
 
@@ -127,21 +133,6 @@ const VIDEO_STRUCTURAL_ANALYSIS_MAX_SAMPLES = 600;
 const VIDEO_STRUCTURAL_ANALYSIS_MAX_WIDTH = 320;
 const VIDEO_STRUCTURAL_SCENE_THRESHOLD = 10;
 
-const SAFE_FORMATS = new Set([
-  "3g2",
-  "3gp",
-  "avi",
-  "flac",
-  "flv",
-  "m4a",
-  "matroska",
-  "mj2",
-  "mov",
-  "mp4",
-  "ogg",
-  "webm",
-]);
-const SAFE_FORMAT_WHITELIST = [...SAFE_FORMATS].join(",");
 const defaultRunner: VideoCommandRunner = async (executable, args, options) => {
   const result = await execFileAsync(executable, [...args], {
     encoding: "utf8",
@@ -624,7 +615,7 @@ export async function detectSceneChangeTimestamps(
       "-protocol_whitelist",
       "file",
       "-format_whitelist",
-      SAFE_FORMAT_WHITELIST,
+      SAFE_VIDEO_FORMAT_WHITELIST,
       "-threads",
       "1",
       "-i",
@@ -686,7 +677,7 @@ export async function analyzeVideoStructure(
       "-protocol_whitelist",
       "file",
       "-format_whitelist",
-      SAFE_FORMAT_WHITELIST,
+      SAFE_VIDEO_FORMAT_WHITELIST,
       "-threads",
       "1",
       "-filter_threads",
@@ -726,7 +717,7 @@ export async function probeLocalVideo(
       "-protocol_whitelist",
       "file",
       "-format_whitelist",
-      SAFE_FORMAT_WHITELIST,
+      SAFE_VIDEO_FORMAT_WHITELIST,
       "-threads",
       "1",
       "-show_entries",
@@ -737,110 +728,69 @@ export async function probeLocalVideo(
     ],
     { signal: options.signal, timeoutMs: options.timeoutMs ?? 30_000 }
   );
-  let durationSeconds = Number.NaN;
-  let formatName = "";
-  let width = Number.NaN;
-  let height = Number.NaN;
-  let streamIndex = Number.NaN;
-  let allVideoStreamsSafe = false;
-  let playableVideoStreamCount = 0;
-  let subtitleStreams: VideoEmbeddedSubtitleStream[] = [];
-  try {
-    const parsed = JSON.parse(result.stdout) as {
-      format?: { duration?: unknown; format_name?: unknown };
-      streams?: Array<{
-        codec_name?: unknown;
-        codec_type?: unknown;
-        disposition?: unknown;
-        height?: unknown;
-        index?: unknown;
-        width?: unknown;
-      }>;
-    };
-    durationSeconds = Number(parsed.format?.duration);
-    formatName = typeof parsed.format?.format_name === "string" ? parsed.format.format_name : "";
-    const videoStreams = parsed.streams?.filter((stream) => stream.codec_type === "video") ?? [];
-    const dispositionFlag = (stream: (typeof videoStreams)[number], key: string): boolean => {
-      const disposition = stream.disposition;
-      if (!disposition || typeof disposition !== "object" || Array.isArray(disposition)) {
-        return false;
-      }
-      const value = (disposition as Record<string, unknown>)[key];
-      return value === 1 || value === "1";
-    };
-    const playableVideoStreams = videoStreams.filter(
-      (stream) => !dispositionFlag(stream, "attached_pic")
+  const parsed = parseVideoProbeMetadata(result.stdout);
+  const videoStreams = parsed.streams.filter((stream) => stream.codecType === "video");
+  const playableVideoStreams = videoStreams.filter((stream) => !stream.attachedPicture);
+  const allVideoStreamsSafe =
+    playableVideoStreams.length > 0 &&
+    !playableVideoStreams.some((stream) => {
+      const streamWidth = Number(stream.width);
+      const streamHeight = Number(stream.height);
+      const candidateIndex = Number(stream.index);
+      return (
+        !Number.isInteger(candidateIndex) ||
+        candidateIndex < 0 ||
+        !Number.isInteger(streamWidth) ||
+        !Number.isInteger(streamHeight) ||
+        streamWidth < 1 ||
+        streamHeight < 1 ||
+        streamWidth > VIDEO_MAX_DIMENSION ||
+        streamHeight > VIDEO_MAX_DIMENSION ||
+        streamWidth * streamHeight > VIDEO_MAX_PIXELS
+      );
+    });
+  const selectedStream = [...playableVideoStreams].sort((left, right) => {
+    const defaultPreference = Number(right.default) - Number(left.default);
+    return defaultPreference || Number(left.index) - Number(right.index);
+  })[0];
+  const subtitleStreams: VideoEmbeddedSubtitleStream[] = parsed.streams.flatMap((stream) => {
+    const codecName = VIDEO_EMBEDDED_SUBTITLE_CODECS.find(
+      (candidate) => candidate === stream.codecName
     );
-    playableVideoStreamCount = playableVideoStreams.length;
-    allVideoStreamsSafe =
-      playableVideoStreams.length > 0 &&
-      !playableVideoStreams.some((stream) => {
-        const streamWidth = Number(stream.width);
-        const streamHeight = Number(stream.height);
-        const candidateIndex = Number(stream.index);
-        return (
-          !Number.isInteger(candidateIndex) ||
-          candidateIndex < 0 ||
-          !Number.isInteger(streamWidth) ||
-          !Number.isInteger(streamHeight) ||
-          streamWidth < 1 ||
-          streamHeight < 1 ||
-          streamWidth > VIDEO_MAX_DIMENSION ||
-          streamHeight > VIDEO_MAX_DIMENSION ||
-          streamWidth * streamHeight > VIDEO_MAX_PIXELS
-        );
-      });
-    const selectedStream = [...playableVideoStreams].sort((left, right) => {
-      const defaultPreference =
-        Number(dispositionFlag(right, "default")) - Number(dispositionFlag(left, "default"));
-      return defaultPreference || Number(left.index) - Number(right.index);
-    })[0];
-    if (selectedStream) {
-      streamIndex = Number(selectedStream.index);
-      width = Number(selectedStream.width);
-      height = Number(selectedStream.height);
+    if (
+      stream.codecType !== "subtitle" ||
+      !codecName ||
+      !Number.isSafeInteger(stream.index) ||
+      (stream.index ?? -1) < 0
+    ) {
+      return [];
     }
-    subtitleStreams = (parsed.streams ?? [])
-      .filter(
-        (stream) =>
-          stream.codec_type === "subtitle" &&
-          typeof stream.codec_name === "string" &&
-          VIDEO_EMBEDDED_SUBTITLE_CODECS.includes(
-            stream.codec_name as (typeof VIDEO_EMBEDDED_SUBTITLE_CODECS)[number]
-          ) &&
-          typeof stream.index === "number" &&
-          Number.isSafeInteger(stream.index) &&
-          stream.index >= 0
-      )
-      .map((stream) => ({
-        codecName: stream.codec_name as (typeof VIDEO_EMBEDDED_SUBTITLE_CODECS)[number],
-        default: dispositionFlag(stream, "default"),
-        streamIndex: stream.index as number,
-      }));
-  } catch {
-    // The stable error below deliberately excludes raw ffprobe output.
-  }
-  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-    throw new Error("Video runtime returned invalid duration metadata");
-  }
-  if (durationSeconds > (options.maxDurationSeconds ?? 600)) {
+    return [
+      {
+        codecName,
+        default: stream.default,
+        streamIndex: stream.index ?? 0,
+      },
+    ];
+  });
+  if (parsed.durationSeconds > (options.maxDurationSeconds ?? 600)) {
     throw new Error("Video exceeds the maximum duration");
   }
-  const formats = formatName
-    .toLowerCase()
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-  if (formats.length === 0 || formats.some((entry) => !SAFE_FORMATS.has(entry))) {
-    throw new Error("Video container format is not allowed");
-  }
-  if (playableVideoStreamCount === 0) {
+  assertVideoContainerFormatAllowed(parsed.formatName);
+  if (playableVideoStreams.length === 0) {
     throw new Error("Video container has no playable video stream");
   }
   if (!allVideoStreamsSafe) {
     throw new Error("Video stream metadata or dimensions exceed the safe processing limit");
   }
-  return { durationSeconds, formatName, height, streamIndex, subtitleStreams, width };
+  return {
+    durationSeconds: parsed.durationSeconds,
+    formatName: parsed.formatName,
+    height: Number(selectedStream?.height),
+    streamIndex: Number(selectedStream?.index),
+    subtitleStreams,
+    width: Number(selectedStream?.width),
+  };
 }
 
 export async function extractFramesFromLocalVideo(
@@ -924,7 +874,7 @@ export async function extractFramesFromLocalVideo(
         "-protocol_whitelist",
         "file",
         "-format_whitelist",
-        SAFE_FORMAT_WHITELIST,
+        SAFE_VIDEO_FORMAT_WHITELIST,
         "-threads",
         "1",
         "-filter_threads",
@@ -996,6 +946,7 @@ export async function extractVideoFramesFromBytes(
 ): Promise<{
   durationSeconds: number;
   embeddedTranscript?: EmbeddedVideoTranscript;
+  embeddedTranscriptOutcome?: EmbeddedVideoTranscriptOutcome;
   frames: ExtractedVideoFrame[];
   sampling: VideoSamplingMetadata;
 }> {
@@ -1022,9 +973,9 @@ export async function extractVideoFramesFromBytes(
       streamIndex: metadata.streamIndex,
       timeoutMs: options.timeoutMs,
     });
-    const embeddedTranscript = await extractEmbeddedVideoTranscript(inputPath, {
+    const embeddedTranscriptExtraction = await extractEmbeddedVideoTranscript(inputPath, {
       durationSeconds: metadata.durationSeconds,
-      formatWhitelist: SAFE_FORMAT_WHITELIST,
+      formatWhitelist: SAFE_VIDEO_FORMAT_WHITELIST,
       runner: (executable, args, commandOptions) =>
         (options.runner ?? defaultRunner)(executable, args, commandOptions),
       signal: options.signal,
@@ -1034,7 +985,10 @@ export async function extractVideoFramesFromBytes(
     const frameBytes = await readBoundedExtractedFrames(frameFiles);
     return {
       durationSeconds: metadata.durationSeconds,
-      ...(embeddedTranscript ? { embeddedTranscript } : {}),
+      embeddedTranscriptOutcome: embeddedTranscriptExtraction.outcome,
+      ...(embeddedTranscriptExtraction.transcript
+        ? { embeddedTranscript: embeddedTranscriptExtraction.transcript }
+        : {}),
       frames: frameFiles.map((frame, index) => ({
         dataUri: `data:image/jpeg;base64,${frameBytes[index].toString("base64")}`,
         timestampSeconds: frame.timestampSeconds,

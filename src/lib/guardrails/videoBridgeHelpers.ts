@@ -21,6 +21,7 @@ import {
   mergeVideoTranscriptCues,
   normalizeVideoTranscript,
   scopeVideoTranscriptCues,
+  type EmbeddedVideoTranscriptOutcome,
   type VideoTranscriptCue,
 } from "./videoBridgeTranscript";
 
@@ -236,6 +237,7 @@ export interface DescribedVideo {
   dedupDropped?: number;
   embeddedTranscriptCueCount?: number;
   embeddedTranscriptFingerprint?: string;
+  embeddedTranscriptOutcome?: EmbeddedVideoTranscriptOutcome;
   focusWindow?: VideoFocusWindow;
   transcriptCues?: VideoTranscriptCue[];
   contactSheetUsed?: boolean;
@@ -649,6 +651,7 @@ export async function describeVideoPart(
         embeddedTranscriptCues.length > 0
           ? fingerprintVideoTranscriptCues(embeddedTranscriptCues)
           : undefined,
+      embeddedTranscriptOutcome: extracted.embeddedTranscriptOutcome,
       focusWindow: focusWindow ?? undefined,
       sampling: extracted.sampling,
       transcriptCues: transcriptCues.length > 0 ? transcriptCues : undefined,

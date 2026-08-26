@@ -611,7 +611,11 @@ export class VideoBridgeGuardrail extends BaseGuardrail {
               );
           if (processingSignal.aborted) throw videoBridgeAbortError();
           const resultCacheBytes = Buffer.byteLength(described.description, "utf8");
-          if (resultCacheKey && resultCacheIdentity) {
+          if (
+            resultCacheKey &&
+            resultCacheIdentity &&
+            described.embeddedTranscriptOutcome !== "transient_failure"
+          ) {
             safeSetCacheEntry(
               cache,
               resultCacheKey,

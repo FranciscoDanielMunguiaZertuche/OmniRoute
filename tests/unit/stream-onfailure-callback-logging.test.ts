@@ -80,6 +80,11 @@ test("#8142 onFailure throwing does not crash the stream and is logged", async (
     loggedOnFailureThrow,
     "a console.debug call referencing onFailure must be emitted when the callback throws"
   );
+  assert.match(
+    debugCalls.flat().map(String).join(" "),
+    /boom from consumer onFailure handler/,
+    "ordinary stream diagnostics must retain their useful error message"
+  );
 });
 
 test("#8142 regression: onFailure returning normally logs nothing and behaves identically", async () => {
@@ -116,4 +121,113 @@ test("#8142 regression: onFailure returning normally logs nothing and behaves id
     false,
     "the happy path (no throw) must not emit the onFailure-throw debug log — behavior-free regression guard"
   );
+});
+
+test("sensitive onFailure diagnostics omit embedded transcript text", async () => {
+  const privateCue = "PRIVATE_VIDEO_CUE_onFailure_2e91";
+  const originalDebug = console.debug;
+  const debugCalls: unknown[][] = [];
+  console.debug = (...args: unknown[]) => {
+    debugCalls.push(args);
+  };
+
+  try {
+    await assert.rejects(
+      readTransformed([responseFailedChunk("upstream failed")], {
+        mode: "passthrough",
+        sourceFormat: FORMATS.OPENAI,
+        provider: "openai",
+        model: "gpt-test",
+        body: { messages: [{ role: "user", content: "hello" }] },
+        redactStreamDiagnosticsForLog: true,
+        onFailure() {
+          throw new Error(privateCue);
+        },
+      }),
+      /upstream failed/i
+    );
+  } finally {
+    console.debug = originalDebug;
+  }
+
+  const retainedDiagnostics = debugCalls.flat().map(String).join(" ");
+  assert.equal(retainedDiagnostics.includes(privateCue), false);
+  assert.equal(retainedDiagnostics.includes("[omitted: video transcript]"), true);
+});
+
+test("sensitive onComplete diagnostics omit embedded transcript text", async () => {
+  const privateCue = "PRIVATE_VIDEO_CUE_onComplete_8d42";
+  const originalDebug = console.debug;
+  const debugCalls: unknown[][] = [];
+  console.debug = (...args: unknown[]) => {
+    debugCalls.push(args);
+  };
+
+  try {
+    await readTransformed(
+      [
+        `data: ${JSON.stringify({
+          id: "chatcmpl-sensitive-log",
+          choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }],
+        })}\n\n`,
+        "data: [DONE]\n\n",
+      ],
+      {
+        mode: "passthrough",
+        sourceFormat: FORMATS.OPENAI,
+        provider: "openai",
+        model: "gpt-test",
+        body: { messages: [{ role: "user", content: "hello" }] },
+        redactStreamDiagnosticsForLog: true,
+        onComplete() {
+          throw new Error(privateCue);
+        },
+      }
+    );
+  } finally {
+    console.debug = originalDebug;
+  }
+
+  const retainedDiagnostics = debugCalls.flat().map(String).join(" ");
+  assert.equal(retainedDiagnostics.includes(privateCue), false);
+  assert.equal(retainedDiagnostics.includes("[omitted: video transcript]"), true);
+});
+
+test("sensitive flush diagnostics omit embedded transcript text", async () => {
+  const privateCue = "PRIVATE_VIDEO_CUE_flush_f601";
+  const originalLog = console.log;
+  const logCalls: unknown[][] = [];
+  console.log = (...args: unknown[]) => {
+    logCalls.push(args);
+  };
+
+  try {
+    await readTransformed(
+      [
+        `data: ${JSON.stringify({
+          id: "chatcmpl-sensitive-flush",
+          choices: [{ index: 0, delta: { content: "tail" }, finish_reason: "stop" }],
+        })}`,
+      ],
+      {
+        mode: "passthrough",
+        sourceFormat: FORMATS.OPENAI,
+        provider: "openai",
+        model: "gpt-test",
+        body: { messages: [{ role: "user", content: "hello" }] },
+        redactStreamDiagnosticsForLog: true,
+        reqLogger: {
+          appendConvertedChunk() {
+            throw new Error(privateCue);
+          },
+        },
+      }
+    );
+  } finally {
+    console.log = originalLog;
+  }
+
+  const retainedDiagnostics = logCalls.flat().map(String).join(" ");
+  assert.equal(retainedDiagnostics.includes(privateCue), false);
+  assert.equal(retainedDiagnostics.includes("[omitted: video transcript]"), true);
 });

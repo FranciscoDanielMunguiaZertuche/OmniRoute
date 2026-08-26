@@ -85,8 +85,12 @@ test("extractErrorMessage stays available to toJsonErrorPayload's callers", () =
 test("markAccountUnavailable routes lastError through the helper", () => {
   const src = fs.readFileSync(new URL("../../src/sse/services/auth.ts", import.meta.url), "utf8");
   assert.ok(
-    src.includes("describeUpstreamFailure(errorText)"),
-    "auth.ts must describe the failure instead of discarding non-string errors"
+    src.includes("const retainedErrorText = options.retainedErrorText ?? errorText"),
+    "auth.ts must retain the caller-selected safe error text"
+  );
+  assert.ok(
+    src.includes("describeUpstreamFailure(retainedErrorText)"),
+    "auth.ts must describe the retained failure instead of echoing the raw provider body"
   );
   assert.equal(
     /typeof errorText === "string" \? errorText\.slice\(0, 100\) : "Provider error"/.test(src),

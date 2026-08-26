@@ -829,3 +829,38 @@ test("pipeWithDisconnect stall watchdog does not fire after normal stream comple
   assert.equal(text, "ok");
   assert.equal(onErrorCalled, false, "stall watchdog must be cleared on stream completion");
 });
+
+test("createStreamController redacts sensitive diagnostics without changing onError", () => {
+  const privateCue = "PRIVATE_VIDEO_CUE_controller_7f38";
+  const originalLog = console.log;
+  const originalDebug = console.debug;
+  const calls: unknown[][] = [];
+  let callbackMessage: string | null = null;
+
+  console.log = (...args: unknown[]) => {
+    calls.push(args);
+  };
+  console.debug = (...args: unknown[]) => {
+    calls.push(args);
+  };
+
+  try {
+    const controller = createStreamController({
+      redactStreamDiagnosticsForLog: true,
+      onError(event) {
+        callbackMessage = event.message;
+        throw new Error(`${privateCue}: callback failure`);
+      },
+    });
+
+    controller.handleError(new Error(privateCue));
+  } finally {
+    console.log = originalLog;
+    console.debug = originalDebug;
+  }
+
+  const retainedDiagnostics = calls.flat().map(String).join(" ");
+  assert.equal(callbackMessage, privateCue, "fallback classification must receive the real error");
+  assert.equal(retainedDiagnostics.includes(privateCue), false);
+  assert.equal(retainedDiagnostics.includes("[omitted: video transcript]"), true);
+});

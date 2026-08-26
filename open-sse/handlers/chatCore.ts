@@ -2967,6 +2967,8 @@ export async function handleChatCore({
   let onPipelineStreamError: streamFailure.PipelineStreamErrorHandler | null = null;
   let onClientDisconnectFinalize:
     ((event: { reason: string; duration: number }) => boolean) | null = null;
+  const redactStreamDiagnosticsForLog =
+    videoTranscriptSensitive || reqLogger.isVideoTranscriptSensitive();
 
   // Create stream controller for disconnect detection
   const streamController = createStreamController({
@@ -2998,6 +3000,7 @@ export async function handleChatCore({
     clientAbortSignal: clientRawRequest?.signal,
     allowCompletedToolHandoffGrace: isCodexResponsesEcho,
     clientDisconnectGracePeriodMs: STREAM_DISCONNECT_GRACE_PERIOD_MS,
+    redactStreamDiagnosticsForLog,
   });
 
   const dedupRequestBody = { ...translatedBody, model: `${provider}/${model}`, stream };
@@ -5782,7 +5785,8 @@ export async function handleChatCore({
       // openai-responses → openai translation still wants the namespace identity
       // map for #7936-style round-trip closure when the client also speaks
       // Responses (Codex CLI).
-      requestToolIdentityMap
+      requestToolIdentityMap,
+      redactStreamDiagnosticsForLog
     );
   } else if (needsTranslation(targetFormat, clientResponseFormat)) {
     // Standard translation for other providers
@@ -5812,7 +5816,8 @@ export async function handleChatCore({
         clientResponseFormat,
       }),
       customToolNames,
-      requestToolIdentityMap
+      requestToolIdentityMap,
+      redactStreamDiagnosticsForLog
     );
   } else {
     log?.debug?.("STREAM", `Standard passthrough mode`);
@@ -5827,7 +5832,8 @@ export async function handleChatCore({
       apiKeyInfo,
       handleStreamFailure,
       clientResponseFormat,
-      requestToolIdentityMap
+      requestToolIdentityMap,
+      redactStreamDiagnosticsForLog
     );
   }
 
@@ -5839,6 +5845,7 @@ export async function handleChatCore({
     clientRawRequestHeaders: clientRawRequest?.headers,
     clientResponseFormat,
     echoModel,
+    redactStreamDiagnosticsForLog,
     responseHeaders,
   });
 

@@ -1,6 +1,7 @@
+import { VIDEO_TRANSCRIPT_LOG_OMISSION_MARKER } from "@/lib/guardrails/videoTranscriptLogRedaction";
+import { trackPendingRequest, appendRequestLog } from "@/lib/usageDb";
 import { translateResponse, initState } from "../translator/index.ts";
 import { FORMATS } from "../translator/formats.ts";
-import { trackPendingRequest, appendRequestLog } from "@/lib/usageDb";
 import {
   extractUsage,
   hasValidUsage,
@@ -177,6 +178,8 @@ type StreamOptions = {
    * codex-compatible `namespace` + `name` fields.
    */
   requestToolIdentityMap?: Map<string, { namespace: string; name: string }> | null;
+  /** Omit request-sensitive transcript text from retained stream diagnostics only. */
+  redactStreamDiagnosticsForLog?: boolean;
 };
 
 type TranslateState = ReturnType<typeof initState> & {
@@ -654,7 +657,10 @@ export function createSSEStream(options: StreamOptions = {}) {
     dropResponsesCommentary,
     customToolNames = new Set<string>(),
     requestToolIdentityMap = null,
+    redactStreamDiagnosticsForLog = false,
   } = options;
+  const retainDiagnosticForLog = (value: unknown): unknown =>
+    redactStreamDiagnosticsForLog ? VIDEO_TRANSCRIPT_LOG_OMISSION_MARKER : value;
   const signatureNamespace = connectionId;
   // Request-body-size metric (for monitoring payload size distribution & correlation with TTFT).
   // The size is JSON-serialised byte count; stored as a performance mark detail so monitoring
@@ -1005,7 +1011,10 @@ export function createSSEStream(options: StreamOptions = {}) {
       try {
         failureHandled = onFailure({ status: 502, message: msg, code: "empty_response" }) === true;
       } catch (e) {
-        console.debug(`[STREAM] onFailure callback error (empty_response):`, e);
+        console.debug(
+          `[STREAM] onFailure callback error (empty_response):`,
+          retainDiagnosticForLog(e)
+        );
       }
     }
     if (decrementPendingRequest && !failureHandled) {
@@ -1199,7 +1208,10 @@ export function createSSEStream(options: StreamOptions = {}) {
                       type: "timeout_error",
                     }) === true;
                 } catch (e) {
-                  console.debug(`[STREAM] onFailure callback error (idle_timeout):`, e);
+                  console.debug(
+                    `[STREAM] onFailure callback error (idle_timeout):`,
+                    retainDiagnosticForLog(e)
+                  );
                 }
               }
               if (!failureHandled) {
@@ -1641,10 +1653,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                         isResponsesCommentaryMessageItem
                       ).items
                     : passthroughResponsesOutputItems;
-                  const backfilled = backfillResponsesCompletedOutput(
-                    parsed,
-                    backfillCandidates
-                  );
+                  const backfilled = backfillResponsesCompletedOutput(parsed, backfillCandidates);
                   const usageNormalized = normalizeUsage(parsed);
                   if (
                     stripped ||
@@ -2025,7 +2034,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                 try {
                   failureHandled = onFailure(failurePayload) === true;
                 } catch (e) {
-                  console.debug(`[STREAM] onFailure callback error:`, e);
+                  console.debug(`[STREAM] onFailure callback error:`, retainDiagnosticForLog(e));
                 }
               }
               clearIdleTimer();
@@ -2594,7 +2603,10 @@ export function createSSEStream(options: StreamOptions = {}) {
                   }),
                 });
               } catch (e) {
-                console.debug(`[STREAM] onComplete callback error (${model || "unknown"}):`, e);
+                console.debug(
+                  `[STREAM] onComplete callback error (${model || "unknown"}):`,
+                  retainDiagnosticForLog(e)
+                );
               }
             } else {
               clearPendingRequestFromStream();
@@ -2682,7 +2694,10 @@ export function createSSEStream(options: StreamOptions = {}) {
                     type: err.type,
                   }) === true;
               } catch (e) {
-                console.debug(`[STREAM] onFailure callback error (${model || "unknown"}):`, e);
+                console.debug(
+                  `[STREAM] onFailure callback error (${model || "unknown"}):`,
+                  retainDiagnosticForLog(e)
+                );
               }
             }
 
@@ -2710,7 +2725,7 @@ export function createSSEStream(options: StreamOptions = {}) {
               } catch (e) {
                 console.debug(
                   `[STREAM] onComplete callback error in error path (${model || "unknown"}):`,
-                  e
+                  retainDiagnosticForLog(e)
                 );
               }
             }
@@ -2900,14 +2915,18 @@ export function createSSEStream(options: StreamOptions = {}) {
             } catch (e) {
               console.debug(
                 `[STREAM] onComplete callback error in flush (${model || "unknown"}):`,
-                e
+                retainDiagnosticForLog(e)
               );
             }
           } else {
             clearPendingRequestFromStream();
           }
         } catch (error) {
-          console.log(`[STREAM] Error in flush (${model || "unknown"}):`, error.message || error);
+          const diagnostic = error instanceof Error ? error.message : error;
+          console.log(
+            `[STREAM] Error in flush (${model || "unknown"}):`,
+            retainDiagnosticForLog(diagnostic)
+          );
         }
       },
       cancel(reason) {
@@ -2937,7 +2956,8 @@ export function createSSETransformStreamWithLogger(
   copilotCompatibleReasoning = false,
   suppressThinkClose = false,
   customToolNames: ReadonlySet<string> = new Set(),
-  requestToolIdentityMap: Map<string, { namespace: string; name: string }> | null = null
+  requestToolIdentityMap: Map<string, { namespace: string; name: string }> | null = null,
+  redactStreamDiagnosticsForLog = false
 ) {
   return createSSEStream({
     mode: STREAM_MODE.TRANSLATE,
@@ -2956,6 +2976,7 @@ export function createSSETransformStreamWithLogger(
     suppressThinkClose,
     customToolNames,
     requestToolIdentityMap,
+    redactStreamDiagnosticsForLog,
   });
 }
 
@@ -2970,7 +2991,8 @@ export function createPassthroughStreamWithLogger(
   apiKeyInfo: unknown = null,
   onFailure: ((payload: StreamFailurePayload) => boolean | void | Promise<void>) | null = null,
   clientResponseFormat: string | null = null,
-  requestToolIdentityMap: Map<string, { namespace: string; name: string }> | null = null
+  requestToolIdentityMap: Map<string, { namespace: string; name: string }> | null = null,
+  redactStreamDiagnosticsForLog = false
 ) {
   return createSSEStream({
     mode: STREAM_MODE.PASSTHROUGH,
@@ -2985,6 +3007,7 @@ export function createPassthroughStreamWithLogger(
     onFailure,
     clientResponseFormat,
     requestToolIdentityMap,
+    redactStreamDiagnosticsForLog,
   });
 }
 

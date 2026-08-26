@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import {
   fetchModelSyncInternal,
   resolveModelSyncInternalBaseUrl,
@@ -16,7 +18,9 @@ import type {
 import {
   fingerprintVideoTranscriptCues,
   normalizeVideoTranscript,
+  VIDEO_TRANSCRIPT_MAX_CUES,
   type EmbeddedVideoTranscript,
+  type EmbeddedVideoTranscriptOutcome,
 } from "./videoBridgeTranscript";
 
 export {
@@ -33,6 +37,7 @@ export interface BrokerExtractedFrame {
 export interface BrokerExtractionResult {
   durationSeconds: number;
   embeddedTranscript?: EmbeddedVideoTranscript;
+  embeddedTranscriptOutcome?: EmbeddedVideoTranscriptOutcome;
   frames: BrokerExtractedFrame[];
   sampling?: VideoSamplingMetadata;
 }
@@ -46,6 +51,80 @@ export interface BrokerExtractionOptions {
 }
 
 const MAX_BROKER_RESPONSE_BYTES = 32 * 1024 * 1024;
+const BROKER_JPEG_DATA_URI_PREFIX = "data:image/jpeg;base64,";
+
+const BrokerFrameSchema = z
+  .object({
+    dataUri: z.string().max(MAX_BROKER_RESPONSE_BYTES),
+    timestampSeconds: z.number(),
+  })
+  .strict();
+
+const BrokerFocusWindowSchema = z
+  .object({
+    endSeconds: z.number(),
+    startSeconds: z.number(),
+  })
+  .strict();
+
+const BrokerSamplingSchema = z
+  .object({
+    candidateCount: z.number().int().nonnegative().optional(),
+    focusWindow: BrokerFocusWindowSchema.optional(),
+    policyEffective: z.enum(["uniform", "scene_aware", "segment_aware"]).optional(),
+    policyRequested: z.enum(["uniform", "scene_aware", "segment_aware"]).optional(),
+  })
+  .strict();
+
+const BrokerEmbeddedTranscriptSchema = z
+  .object({
+    cues: z.array(z.unknown()).min(1).max(VIDEO_TRANSCRIPT_MAX_CUES),
+    fingerprint: z.string(),
+  })
+  .strict();
+
+const BrokerExtractionResultSchema = z
+  .object({
+    durationSeconds: z.number(),
+    embeddedTranscript: BrokerEmbeddedTranscriptSchema.optional(),
+    embeddedTranscriptOutcome: z.enum(["success", "absent", "transient_failure"]).optional(),
+    frames: z.array(BrokerFrameSchema),
+    sampling: BrokerSamplingSchema.optional(),
+  })
+  .strict();
+
+function isAsciiAlphaNumeric(code: number): boolean {
+  return (
+    (code >= 0x30 && code <= 0x39) ||
+    (code >= 0x41 && code <= 0x5a) ||
+    (code >= 0x61 && code <= 0x7a)
+  );
+}
+
+function isCanonicalBase64(value: string): boolean {
+  if (value.length < 4 || value.length % 4 !== 0) return false;
+  const padding = value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0;
+  const contentLength = value.length - padding;
+  for (let index = 0; index < contentLength; index += 1) {
+    const code = value.charCodeAt(index);
+    if (!isAsciiAlphaNumeric(code) && code !== 0x2b && code !== 0x2f) return false;
+  }
+  for (let index = contentLength; index < value.length; index += 1) {
+    if (value.charCodeAt(index) !== 0x3d) return false;
+  }
+  return Buffer.from(value, "base64").toString("base64") === value;
+}
+
+function isBrokerJpegDataUri(value: string): boolean {
+  return (
+    value.startsWith(BROKER_JPEG_DATA_URI_PREFIX) &&
+    isCanonicalBase64(value.slice(BROKER_JPEG_DATA_URI_PREFIX.length))
+  );
+}
+
+function isUnknownRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
 
 export function resolveVideoBridgeBrokerBaseUrl(_candidate?: string): string {
   return resolveModelSyncInternalBaseUrl();
@@ -89,55 +168,67 @@ async function readBoundedResponse(response: Response, maxBytes: number): Promis
 }
 
 function parseBrokerResult(value: unknown, frameCount: number): BrokerExtractionResult {
-  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : null;
-  const durationSeconds = Number(record?.durationSeconds);
-  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0 || !Array.isArray(record?.frames)) {
+  const rawRecord = isUnknownRecord(value) ? value : null;
+  const rawFrames = rawRecord?.frames;
+  if (Array.isArray(rawFrames) && (rawFrames.length < 1 || rawFrames.length > frameCount)) {
+    throw new Error("Video extraction broker returned an invalid frame count");
+  }
+  const rawEmbeddedTranscript = isUnknownRecord(rawRecord?.embeddedTranscript)
+    ? rawRecord.embeddedTranscript
+    : null;
+  const rawEmbeddedCues = rawEmbeddedTranscript?.cues;
+  if (
+    Array.isArray(rawEmbeddedCues) &&
+    (rawEmbeddedCues.length < 1 || rawEmbeddedCues.length > VIDEO_TRANSCRIPT_MAX_CUES)
+  ) {
+    throw new Error("Video extraction broker returned an invalid embedded transcript");
+  }
+  const parsed = BrokerExtractionResultSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error("Video extraction broker returned invalid metadata");
+  }
+  const record = parsed.data;
+  const durationSeconds = record.durationSeconds;
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
     throw new Error("Video extraction broker returned invalid metadata");
   }
   if (record.frames.length < 1 || record.frames.length > frameCount) {
     throw new Error("Video extraction broker returned an invalid frame count");
   }
+  let previousTimestampSeconds = Number.NEGATIVE_INFINITY;
   const frames = record.frames.map((entry) => {
-    const frame = entry && typeof entry === "object" ? (entry as Record<string, unknown>) : null;
-    const timestampSeconds = Number(frame?.timestampSeconds);
-    const dataUri = typeof frame?.dataUri === "string" ? frame.dataUri : "";
+    const timestampSeconds = entry.timestampSeconds;
+    const dataUri = entry.dataUri;
     if (
       !Number.isFinite(timestampSeconds) ||
       timestampSeconds < 0 ||
-      !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(dataUri)
+      timestampSeconds > durationSeconds ||
+      timestampSeconds < previousTimestampSeconds ||
+      !isBrokerJpegDataUri(dataUri)
     ) {
       throw new Error("Video extraction broker returned an invalid frame");
     }
+    previousTimestampSeconds = timestampSeconds;
     return { dataUri, timestampSeconds };
   });
-  const samplingRecord =
-    record?.sampling && typeof record.sampling === "object"
-      ? (record.sampling as Record<string, unknown>)
-      : {};
-  const policyRequested =
-    samplingRecord.policyRequested === "scene_aware" ||
-    samplingRecord.policyRequested === "segment_aware"
-      ? samplingRecord.policyRequested
-      : "uniform";
-  const policyEffective =
-    samplingRecord.policyEffective === "scene_aware" ||
-    samplingRecord.policyEffective === "segment_aware"
-      ? samplingRecord.policyEffective
-      : "uniform";
-  const candidateCount = Number(samplingRecord.candidateCount ?? 0);
+  const samplingRecord = record.sampling ?? {};
+  const policyRequested = samplingRecord.policyRequested ?? "uniform";
+  const policyEffective = samplingRecord.policyEffective ?? "uniform";
+  const candidateCount = samplingRecord.candidateCount ?? 0;
+  const focusWindow = samplingRecord.focusWindow;
+  if (
+    focusWindow &&
+    (!Number.isFinite(focusWindow.startSeconds) ||
+      !Number.isFinite(focusWindow.endSeconds) ||
+      focusWindow.startSeconds < 0 ||
+      focusWindow.endSeconds <= focusWindow.startSeconds ||
+      focusWindow.endSeconds > durationSeconds)
+  ) {
+    throw new Error("Video extraction broker returned an invalid focus window");
+  }
   let embeddedTranscript: EmbeddedVideoTranscript | undefined;
   if (record.embeddedTranscript !== undefined) {
-    const transcript =
-      record.embeddedTranscript && typeof record.embeddedTranscript === "object"
-        ? (record.embeddedTranscript as Record<string, unknown>)
-        : null;
-    if (
-      !transcript ||
-      !Array.isArray(transcript.cues) ||
-      typeof transcript.fingerprint !== "string"
-    ) {
-      throw new Error("Video extraction broker returned an invalid embedded transcript");
-    }
+    const transcript = record.embeddedTranscript;
     const cues = normalizeVideoTranscript({ cues: transcript.cues }, durationSeconds, "embedded");
     const fingerprint = fingerprintVideoTranscriptCues(cues);
     if (transcript.fingerprint !== fingerprint) {
@@ -145,12 +236,21 @@ function parseBrokerResult(value: unknown, frameCount: number): BrokerExtraction
     }
     embeddedTranscript = { cues, fingerprint };
   }
+  const embeddedTranscriptOutcome = record.embeddedTranscriptOutcome;
+  if (
+    embeddedTranscriptOutcome !== undefined &&
+    (embeddedTranscriptOutcome === "success") !== Boolean(embeddedTranscript)
+  ) {
+    throw new Error("Video extraction broker returned invalid embedded transcript outcome");
+  }
   return {
     durationSeconds,
     ...(embeddedTranscript ? { embeddedTranscript } : {}),
+    ...(embeddedTranscriptOutcome ? { embeddedTranscriptOutcome } : {}),
     frames,
     sampling: {
-      candidateCount: Number.isInteger(candidateCount) && candidateCount >= 0 ? candidateCount : 0,
+      candidateCount,
+      ...(focusWindow ? { focusWindow } : {}),
       policyEffective,
       policyRequested,
     },

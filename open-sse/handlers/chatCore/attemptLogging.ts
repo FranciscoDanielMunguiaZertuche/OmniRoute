@@ -320,7 +320,7 @@ export function persistAttemptLogs(args: PersistAttemptLogsArgs, ctx: PersistAtt
           pipelinePayloads[requestStage] = cloneBoundedChatLogPayload(
             pipelinePayloads[requestStage],
             0,
-            requestStage !== "clientRawRequest" ? descriptionLogContext : false
+            requestStage !== "clientRawRequest" ? descriptionLogContext : {}
           ) as Record<string, unknown>;
         }
       }

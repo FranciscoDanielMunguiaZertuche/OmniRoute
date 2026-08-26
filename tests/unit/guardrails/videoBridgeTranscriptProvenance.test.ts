@@ -26,6 +26,27 @@ test("accepts only provenance-bearing transcript cues and deduplicates exact rep
   ]);
 });
 
+test("preserves distinct overlapping symbol-only and emoji transcript cues", () => {
+  const cues = normalizeVideoTranscript(
+    {
+      cues: [
+        { text: "♪", start: 1, end: 3, source: "embedded" },
+        { text: "🔔", start: 1.5, end: 2.5, source: "embedded" },
+        { text: "❤️", start: 1.25, end: 2.75, source: "embedded" },
+        { text: "☀️", start: 1.25, end: 2.75, source: "embedded" },
+        { text: "👩‍💻", start: 1.25, end: 2.75, source: "embedded" },
+        { text: "👨‍💻", start: 1.25, end: 2.75, source: "embedded" },
+      ],
+    },
+    5
+  );
+
+  assert.deepEqual(
+    cues.map((cue) => cue.text),
+    ["♪", "☀️", "❤️", "👨‍💻", "👩‍💻", "🔔"]
+  );
+});
+
 test("uses locale-independent code-unit order for tied cues and their fingerprint", () => {
   const forward = normalizeVideoTranscript(
     {

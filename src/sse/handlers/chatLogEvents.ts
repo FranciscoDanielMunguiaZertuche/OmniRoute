@@ -71,12 +71,10 @@ export async function safeLogEvents({
       comboId: comboName || null,
       connectionId: credentials.connectionId,
       egressIp,
-      error: result.success
-        ? null
-        : redactVideoTranscriptSensitiveText(
-            String(result.error || "provider request failed"),
-            videoTranscriptSensitive
-          ),
+      error:
+        result.success || !result.error
+          ? null
+          : redactVideoTranscriptSensitiveText(String(result.error), videoTranscriptSensitive),
       latencyMs: proxyLatency,
       level: proxyInfo?.level || "direct",
       levelId: proxyInfo?.levelId || null,

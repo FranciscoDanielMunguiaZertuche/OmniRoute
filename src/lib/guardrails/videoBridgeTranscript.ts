@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { isAbsolute } from "node:path";
+import { z } from "zod";
 
 export type VideoTranscriptSource = "audio-bridge" | "client" | "embedded";
 
@@ -24,8 +25,11 @@ export interface VideoTranscriptCue {
 
 export const VIDEO_TRANSCRIPT_MAX_CUES = 256;
 export const VIDEO_TRANSCRIPT_MAX_CUE_TEXT_BYTES = 4 * 1024;
+export const VIDEO_TRANSCRIPT_MAX_CUE_INPUT_CODE_UNITS = 4 * 1024;
 export const VIDEO_TRANSCRIPT_MAX_TOTAL_TEXT_BYTES = 64 * 1024;
 export const VIDEO_EMBEDDED_SUBTITLE_MAX_OUTPUT_BYTES = 256 * 1024;
+export const VIDEO_EMBEDDED_SUBTITLE_MAX_LINE_CODE_UNITS = 4 * 1024;
+export const VIDEO_EMBEDDED_SUBTITLE_MAX_TIMESTAMP_CODE_UNITS = 24;
 export const VIDEO_EMBEDDED_SUBTITLE_MAX_STREAM_ATTEMPTS = 2;
 export const VIDEO_EMBEDDED_SUBTITLE_TIMEOUT_MS = 10_000;
 export const VIDEO_EMBEDDED_TRANSCRIPT_EXTRACTOR_VERSION = "embedded-text-v1";
@@ -43,6 +47,12 @@ export interface EmbeddedVideoTranscript {
   cues: VideoTranscriptCue[];
   fingerprint: string;
 }
+
+export type EmbeddedVideoTranscriptOutcome = "success" | "absent" | "transient_failure";
+
+export type EmbeddedVideoTranscriptExtractionResult =
+  | { outcome: "success"; transcript: EmbeddedVideoTranscript }
+  | { outcome: "absent" | "transient_failure"; transcript?: never };
 
 interface EmbeddedSubtitleCommandOptions {
   maxBufferBytes?: number;
@@ -63,9 +73,31 @@ export const VIDEO_TRANSCRIPT_SOURCE_PRIORITY: readonly VideoTranscriptSource[] 
   "audio-bridge",
 ];
 
-const VIDEO_TRANSCRIPT_SOURCES: ReadonlySet<VideoTranscriptSource> = new Set(
-  VIDEO_TRANSCRIPT_SOURCE_PRIORITY
-);
+const RawVideoTranscriptCueSchema = z
+  .object({
+    confidence: z.number().optional(),
+    end: z.number().optional(),
+    endSeconds: z.number().optional(),
+    source: z.enum(["audio-bridge", "client", "embedded"]),
+    start: z.number().optional(),
+    startSeconds: z.number().optional(),
+    text: z.string().max(VIDEO_TRANSCRIPT_MAX_CUE_INPUT_CODE_UNITS),
+  })
+  .strict();
+
+const RawVideoTranscriptCuesSchema = z
+  .array(RawVideoTranscriptCueSchema)
+  .max(VIDEO_TRANSCRIPT_MAX_CUES);
+
+const RawVideoTranscriptSchema = z.union([
+  RawVideoTranscriptCuesSchema,
+  z.object({ cues: RawVideoTranscriptCuesSchema }).strict(),
+]);
+
+const SINGLE_UNICODE_WHITESPACE = /^\s$/u;
+const SINGLE_UNICODE_LETTER_OR_NUMBER = /^[\p{L}\p{N}]$/u;
+const SINGLE_UNICODE_MARK = /^\p{M}$/u;
+const SINGLE_UNICODE_PUNCTUATION_SYMBOL_OR_FORMAT = /^[\p{P}\p{S}\p{Cf}]$/u;
 
 function sourceRank(source: VideoTranscriptSource): number {
   return VIDEO_TRANSCRIPT_SOURCE_PRIORITY.indexOf(source);
@@ -92,14 +124,30 @@ function hasWellFormedUnicode(value: string): boolean {
 
 function normalizeCueText(value: unknown): string {
   if (typeof value !== "string") return "";
+  if (value.length > VIDEO_TRANSCRIPT_MAX_CUE_INPUT_CODE_UNITS) {
+    throw new Error("Video transcript raw cue text budget exceeded");
+  }
   if (value.includes("\0") || value.includes("\uFFFD") || !hasWellFormedUnicode(value)) {
     throw new Error("Invalid video transcript text encoding");
   }
-  const text = value
-    .normalize("NFC")
-    .replace(/[\u0001-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  let text = "";
+  let pendingSpace = false;
+  for (const character of value.normalize("NFC")) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    const isControl =
+      (codePoint >= 0x01 && codePoint <= 0x08) ||
+      codePoint === 0x0b ||
+      codePoint === 0x0c ||
+      (codePoint >= 0x0e && codePoint <= 0x1f) ||
+      (codePoint >= 0x7f && codePoint <= 0x9f);
+    if (isControl || SINGLE_UNICODE_WHITESPACE.test(character)) {
+      pendingSpace = text.length > 0;
+      continue;
+    }
+    if (pendingSpace) text += " ";
+    text += character;
+    pendingSpace = false;
+  }
   if (Buffer.byteLength(text, "utf8") > VIDEO_TRANSCRIPT_MAX_CUE_TEXT_BYTES) {
     throw new Error("Video transcript cue text budget exceeded");
   }
@@ -108,12 +156,39 @@ function normalizeCueText(value: unknown): string {
 
 /** Canonical text identity shared by transcript and downstream fusion reconciliation. */
 export function normalizeVideoTranscriptTextIdentity(text: string): string {
-  return text
-    .normalize("NFKC")
-    .toLocaleLowerCase("en-US")
-    .replace(/[\p{P}\p{S}]+/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  let identity = "";
+  let hasLetterOrNumber = false;
+  let markCanAttach = false;
+  let pendingSpace = false;
+  for (const character of text.normalize("NFKC").toLocaleLowerCase("en-US")) {
+    if (
+      SINGLE_UNICODE_PUNCTUATION_SYMBOL_OR_FORMAT.test(character) ||
+      SINGLE_UNICODE_WHITESPACE.test(character)
+    ) {
+      pendingSpace = identity.length > 0;
+      markCanAttach = false;
+      continue;
+    }
+    if (SINGLE_UNICODE_MARK.test(character)) {
+      if (markCanAttach) identity += character;
+      continue;
+    }
+    if (pendingSpace) identity += " ";
+    identity += character;
+    if (SINGLE_UNICODE_LETTER_OR_NUMBER.test(character)) {
+      hasLetterOrNumber = true;
+      markCanAttach = true;
+    } else {
+      markCanAttach = false;
+    }
+    pendingSpace = false;
+  }
+  return hasLetterOrNumber ? identity : "";
+}
+
+function videoTranscriptCueDedupIdentity(text: string): string {
+  const canonical = normalizeVideoTranscriptTextIdentity(text);
+  return canonical ? `canonical:${canonical}` : `exact:${text}`;
 }
 
 function cuesOverlap(left: VideoTranscriptCue, right: VideoTranscriptCue): boolean {
@@ -262,11 +337,10 @@ export function mergeVideoTranscriptCues(
 ): VideoTranscriptCue[] {
   const merged: VideoTranscriptCue[] = [];
   for (const cue of sortCues(tracks.flatMap((track) => [...track]))) {
-    const identity = normalizeVideoTranscriptTextIdentity(cue.text);
+    const identity = videoTranscriptCueDedupIdentity(cue.text);
     const duplicate = merged.find(
       (candidate) =>
-        normalizeVideoTranscriptTextIdentity(candidate.text) === identity &&
-        cuesOverlap(candidate, cue)
+        videoTranscriptCueDedupIdentity(candidate.text) === identity && cuesOverlap(candidate, cue)
     );
     if (!duplicate) {
       merged.push(cloneCue(cue));
@@ -303,44 +377,48 @@ export function normalizeVideoTranscript(
   expectedSource?: VideoTranscriptSource
 ): VideoTranscriptCue[] {
   if (value === undefined || value === null) return [];
-  const rawCues = Array.isArray(value)
+  const unvalidatedCues = Array.isArray(value)
     ? value
-    : value && typeof value === "object" && Array.isArray((value as Record<string, unknown>).cues)
+    : value && typeof value === "object" && !Array.isArray(value)
       ? (value as Record<string, unknown>).cues
       : null;
-  if (!rawCues) throw new Error("Invalid video transcript: expected a cues array");
+  if (Array.isArray(unvalidatedCues) && unvalidatedCues.length > VIDEO_TRANSCRIPT_MAX_CUES) {
+    throw new Error("Video transcript cue budget exceeded");
+  }
+  const parsed = RawVideoTranscriptSchema.safeParse(value);
+  if (!parsed.success) {
+    const textBudgetExceeded = parsed.error.issues.some(
+      (issue) => issue.code === "too_big" && issue.path.at(-1) === "text"
+    );
+    if (textBudgetExceeded) throw new Error("Video transcript cue text budget exceeded");
+    const cueBudgetExceeded = parsed.error.issues.some((issue) => issue.code === "too_big");
+    if (cueBudgetExceeded) throw new Error("Video transcript cue budget exceeded");
+    throw new Error("Invalid video transcript source or strict cue shape");
+  }
+  const rawCues = Array.isArray(parsed.data) ? parsed.data : parsed.data.cues;
   if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
     throw new Error("Invalid video transcript duration");
-  }
-  if (rawCues.length > VIDEO_TRANSCRIPT_MAX_CUES) {
-    throw new Error("Video transcript cue budget exceeded");
   }
 
   const normalized: VideoTranscriptCue[] = [];
   let totalTextBytes = 0;
   for (const cue of rawCues) {
-    if (!cue || typeof cue !== "object") throw new Error("Invalid video transcript cue");
-    const record = cue as Record<string, unknown>;
-    const text = normalizeCueText(record.text);
-    const source = record.source;
+    const text = normalizeCueText(cue.text);
+    const source = cue.source;
     const startSeconds =
-      typeof record.startSeconds === "number"
-        ? record.startSeconds
-        : typeof record.start === "number"
-          ? record.start
+      typeof cue.startSeconds === "number"
+        ? cue.startSeconds
+        : typeof cue.start === "number"
+          ? cue.start
           : Number.NaN;
     const endSeconds =
-      typeof record.endSeconds === "number"
-        ? record.endSeconds
-        : typeof record.end === "number"
-          ? record.end
+      typeof cue.endSeconds === "number"
+        ? cue.endSeconds
+        : typeof cue.end === "number"
+          ? cue.end
           : Number.NaN;
-    const confidence = record.confidence === undefined ? 1 : record.confidence;
-    if (
-      !text ||
-      typeof source !== "string" ||
-      !VIDEO_TRANSCRIPT_SOURCES.has(source as VideoTranscriptSource)
-    ) {
+    const confidence = cue.confidence === undefined ? 1 : cue.confidence;
+    if (!text) {
       throw new Error("Invalid video transcript source or provenance");
     }
     if (expectedSource && source !== expectedSource) {
@@ -366,7 +444,7 @@ export function normalizeVideoTranscript(
     normalized.push({
       confidence,
       endSeconds: normalizedInterval.endSeconds,
-      source: source as VideoTranscriptSource,
+      source,
       startSeconds: normalizedInterval.startSeconds,
       text,
     });
@@ -398,15 +476,68 @@ export function fingerprintVideoTranscriptCues(cues: readonly VideoTranscriptCue
   return `sha256:${createHash("sha256").update(JSON.stringify(canonical)).digest("hex")}`;
 }
 
+function parseBoundedUnsignedInteger(value: string, exactLength?: number): number {
+  if (!value || (exactLength !== undefined && value.length !== exactLength)) return Number.NaN;
+  let result = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 0x30 || code > 0x39) return Number.NaN;
+    result = result * 10 + code - 0x30;
+    if (!Number.isSafeInteger(result)) return Number.NaN;
+  }
+  return result;
+}
+
 function parseWebVttTimestamp(value: string): number {
-  const match = /^(?:(\d{2,}):)?(\d{2}):(\d{2})\.(\d{3})$/.exec(value);
-  if (!match) return Number.NaN;
-  const hours = Number(match[1] ?? 0);
-  const minutes = Number(match[2]);
-  const seconds = Number(match[3]);
-  const milliseconds = Number(match[4]);
+  if (value.length > VIDEO_EMBEDDED_SUBTITLE_MAX_TIMESTAMP_CODE_UNITS) {
+    throw new Error("Embedded video subtitle timestamp budget exceeded");
+  }
+  const segments = value.split(":");
+  if (segments.length !== 2 && segments.length !== 3) return Number.NaN;
+  const secondsParts = segments.at(-1)?.split(".") ?? [];
+  if (secondsParts.length !== 2) return Number.NaN;
+  const hours = segments.length === 3 ? parseBoundedUnsignedInteger(segments[0]) : 0;
+  const minutes = parseBoundedUnsignedInteger(segments.at(-2) ?? "", 2);
+  const seconds = parseBoundedUnsignedInteger(secondsParts[0], 2);
+  const milliseconds = parseBoundedUnsignedInteger(secondsParts[1], 3);
+  if (segments.length === 3 && segments[0].length < 2) return Number.NaN;
+  if (![hours, minutes, seconds, milliseconds].every(Number.isFinite)) return Number.NaN;
   if (minutes > 59 || seconds > 59) return Number.NaN;
   return hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
+}
+
+function isWebVttMetadataBlock(line: string): boolean {
+  return ["NOTE", "STYLE", "REGION"].some(
+    (prefix) =>
+      line === prefix ||
+      (line.startsWith(prefix) && (line[prefix.length] === " " || line[prefix.length] === "\t"))
+  );
+}
+
+function firstWhitespaceIndex(value: string): number {
+  let offset = 0;
+  for (const character of value) {
+    if (SINGLE_UNICODE_WHITESPACE.test(character)) return offset;
+    offset += character.length;
+  }
+  return -1;
+}
+
+function parseWebVttTimingLine(line: string): { end: string; start: string } | null {
+  const arrowIndex = line.indexOf("-->");
+  if (arrowIndex < 1 || line.indexOf("-->", arrowIndex + 3) !== -1) return null;
+  if (
+    !SINGLE_UNICODE_WHITESPACE.test(line[arrowIndex - 1]) ||
+    !SINGLE_UNICODE_WHITESPACE.test(line[arrowIndex + 3] ?? "")
+  ) {
+    return null;
+  }
+  const start = line.slice(0, arrowIndex).trim();
+  const remainder = line.slice(arrowIndex + 3).trimStart();
+  const separatorIndex = firstWhitespaceIndex(remainder);
+  const end = separatorIndex === -1 ? remainder : remainder.slice(0, separatorIndex);
+  if (!start || !end || firstWhitespaceIndex(start) !== -1) return null;
+  return { end, start };
 }
 
 function sanitizeWebVttCueText(lines: readonly string[]): string {
@@ -435,6 +566,9 @@ export function parseEmbeddedSubtitleWebVtt(
     .replace(/^\uFEFF/, "")
     .replace(/\r\n?/g, "\n")
     .split("\n");
+  if (lines.some((line) => line.length > VIDEO_EMBEDDED_SUBTITLE_MAX_LINE_CODE_UNITS)) {
+    throw new Error("Embedded video subtitle line budget exceeded");
+  }
   if (lines[0]?.trim() !== "WEBVTT") {
     throw new Error("Embedded video subtitle output is not WebVTT");
   }
@@ -444,23 +578,23 @@ export function parseEmbeddedSubtitleWebVtt(
   while (index < lines.length) {
     while (index < lines.length && lines[index].trim() === "") index += 1;
     if (index >= lines.length) break;
-    if (/^(NOTE|STYLE|REGION)(?:\s|$)/.test(lines[index])) {
+    if (isWebVttMetadataBlock(lines[index])) {
       while (index < lines.length && lines[index].trim() !== "") index += 1;
       continue;
     }
 
     if (!lines[index].includes("-->")) index += 1;
     const timing = lines[index] ?? "";
-    const match = /^(\S+)\s+-->\s+(\S+)(?:\s+.*)?$/.exec(timing.trim());
-    if (!match) throw new Error("Embedded video subtitle cue timing is invalid");
+    const parsedTiming = parseWebVttTimingLine(timing.trim());
+    if (!parsedTiming) throw new Error("Embedded video subtitle cue timing is invalid");
     index += 1;
     const textLines: string[] = [];
     while (index < lines.length && lines[index].trim() !== "") {
       textLines.push(lines[index]);
       index += 1;
     }
-    const startSeconds = parseWebVttTimestamp(match[1]);
-    const endSeconds = parseWebVttTimestamp(match[2]);
+    const startSeconds = parseWebVttTimestamp(parsedTiming.start);
+    const endSeconds = parseWebVttTimestamp(parsedTiming.end);
     if (!Number.isFinite(startSeconds) || !Number.isFinite(endSeconds)) {
       throw new Error("Embedded video subtitle cue timestamp is invalid");
     }
@@ -495,15 +629,11 @@ export async function extractEmbeddedVideoTranscript(
     streams: readonly VideoEmbeddedSubtitleStream[];
     timeoutMs: number;
   }
-): Promise<EmbeddedVideoTranscript | undefined> {
+): Promise<EmbeddedVideoTranscriptExtractionResult> {
   if (!isAbsolute(inputPath) || inputPath.includes("\0") || inputPath.includes("://")) {
     throw new Error("Embedded video subtitle extraction requires a local path");
   }
-  if (
-    !options.formatWhitelist ||
-    options.formatWhitelist.length > 512 ||
-    !/^[a-z0-9_,]+$/.test(options.formatWhitelist)
-  ) {
+  if (!/^[a-z0-9_,]{1,512}$/.test(options.formatWhitelist)) {
     throw new Error("Embedded video subtitle extraction requires a fixed format whitelist");
   }
   if (options.signal?.aborted) throw new Error("Video subtitle extraction request aborted");
@@ -521,9 +651,13 @@ export async function extractEmbeddedVideoTranscript(
   }
   const deadlineMs = startedAtMs + totalTimeoutMs;
   const candidates = selectEmbeddedSubtitleCandidates(options.streams);
+  let transientFailure = false;
   for (const stream of candidates) {
     const remainingMs = Math.min(totalTimeoutMs, Math.floor(deadlineMs - now()));
-    if (!Number.isFinite(remainingMs) || remainingMs < 1) break;
+    if (!Number.isFinite(remainingMs) || remainingMs < 1) {
+      transientFailure = true;
+      break;
+    }
     try {
       const transcript = await extractEmbeddedSubtitleCandidate(inputPath, stream, {
         durationSeconds: options.durationSeconds,
@@ -532,13 +666,14 @@ export async function extractEmbeddedVideoTranscript(
         signal: options.signal,
         timeoutMs: remainingMs,
       });
-      if (transcript) return transcript;
+      if (transcript) return { outcome: "success", transcript };
     } catch {
       if (options.signal?.aborted) throw new Error("Video subtitle extraction request aborted");
+      transientFailure = true;
       // Embedded text is optional. A bad/unsupported stream must not discard valid video frames.
     }
   }
-  return undefined;
+  return { outcome: transientFailure ? "transient_failure" : "absent" };
 }
 
 function selectEmbeddedSubtitleCandidates(

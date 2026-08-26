@@ -1,3 +1,4 @@
+import { VIDEO_TRANSCRIPT_LOG_OMISSION_MARKER } from "@/lib/guardrails/videoTranscriptLogRedaction";
 import { trackPendingRequest } from "@/lib/usageDb";
 import { STREAM_IDLE_TIMEOUT_MS } from "../config/constants.ts";
 import { FORMATS } from "../translator/formats.ts";
@@ -39,6 +40,7 @@ type StreamControllerOptions = {
   clientAbortSignal?: AbortSignal | null;
   allowCompletedToolHandoffGrace?: boolean;
   clientDisconnectGracePeriodMs?: number;
+  redactStreamDiagnosticsForLog?: boolean;
 };
 
 type StreamController = ReturnType<typeof createStreamController>;
@@ -243,6 +245,7 @@ export function createStreamController({
   clientAbortSignal,
   allowCompletedToolHandoffGrace = false,
   clientDisconnectGracePeriodMs = 0,
+  redactStreamDiagnosticsForLog = false,
 }: StreamControllerOptions = {}) {
   const abortController = new AbortController();
   const startTime = Date.now();
@@ -252,6 +255,9 @@ export function createStreamController({
   let completedToolHandoffDrain: (() => void) | null = null;
   let pendingRequestCleared = false;
   let cleanupClientAbortSignal: (() => void) | null = null;
+
+  const retainDiagnosticForLog = (value: unknown): unknown =>
+    redactStreamDiagnosticsForLog ? VIDEO_TRANSCRIPT_LOG_OMISSION_MARKER : value;
 
   const logStream = (status) => {
     const duration = Date.now() - startTime;
@@ -279,7 +285,7 @@ export function createStreamController({
     } catch (e) {
       console.error(
         `[${getTimeString()}] [streamHandler] trackPendingRequest decrement failed — counter may drift`,
-        e
+        retainDiagnosticForLog(e)
       );
     }
   };
@@ -317,7 +323,7 @@ export function createStreamController({
       disconnected = true;
       cleanupClientAbortListener();
 
-      logStream(`disconnect: ${reason}`);
+      logStream(`disconnect: ${String(retainDiagnosticForLog(reason))}`);
 
       // Decrement pending request counter — the TransformStream flush() won't
       // fire when the client aborts mid-stream, so we must clean up here.
@@ -390,7 +396,7 @@ export function createStreamController({
               duration: Date.now() - startTime,
             }) === true;
         } catch (e) {
-          console.debug(`[STREAM-HANDLER] onError callback error:`, e);
+          console.debug(`[STREAM-HANDLER] onError callback error:`, retainDiagnosticForLog(e));
         }
       }
 
@@ -406,7 +412,7 @@ export function createStreamController({
       }
 
       if (error instanceof Error) {
-        logStream(`error: ${error.message}`);
+        logStream(`error: ${String(retainDiagnosticForLog(error.message))}`);
         return;
       }
       logStream("error: unknown");
@@ -845,9 +851,11 @@ export function pipeWithDisconnect(
   providerResponse: Response,
   transformStream: TransformStream<Uint8Array, Uint8Array>,
   streamController: StreamController,
-  opts: { stallTimeoutMs?: number } = {}
+  opts: { redactStreamDiagnosticsForLog?: boolean; stallTimeoutMs?: number } = {}
 ) {
   const stallTimeoutMs = opts.stallTimeoutMs ?? DEFAULT_STREAM_STALL_TIMEOUT_MS;
+  const retainDiagnosticForLog = (value: unknown): unknown =>
+    opts.redactStreamDiagnosticsForLog ? VIDEO_TRANSCRIPT_LOG_OMISSION_MARKER : value;
 
   // Watchdog disabled — preserve legacy behavior verbatim.
   if (!stallTimeoutMs || stallTimeoutMs <= 0) {
@@ -887,7 +895,10 @@ export function pipeWithDisconnect(
       try {
         streamController.handleError?.(stallError);
       } catch (e) {
-        console.debug(`[STREAM-HANDLER] stall watchdog handleError failed:`, e);
+        console.debug(
+          `[STREAM-HANDLER] stall watchdog handleError failed:`,
+          retainDiagnosticForLog(e)
+        );
       }
       // Error the pipeline so the downstream reader unblocks. createDisconnect-
       // AwareStream's catch block translates this into buildStreamErrorChunks
@@ -895,13 +906,16 @@ export function pipeWithDisconnect(
       try {
         upstreamTapController?.error(stallError);
       } catch (e) {
-        console.debug(`[STREAM-HANDLER] stall watchdog upstream tap error failed:`, e);
+        console.debug(
+          `[STREAM-HANDLER] stall watchdog upstream tap error failed:`,
+          retainDiagnosticForLog(e)
+        );
       }
       // Abort the underlying fetch so upstream releases the connection.
       try {
         streamController.abort?.();
       } catch (e) {
-        console.debug(`[STREAM-HANDLER] stall watchdog abort failed:`, e);
+        console.debug(`[STREAM-HANDLER] stall watchdog abort failed:`, retainDiagnosticForLog(e));
       }
     }, stallTimeoutMs);
   };

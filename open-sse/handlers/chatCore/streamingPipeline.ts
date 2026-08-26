@@ -68,6 +68,7 @@ export function assembleStreamingPipeline(
     clientRawRequestHeaders: HeadersLike;
     clientResponseFormat: Parameters<typeof defaultShape>[0];
     echoModel: string | null | undefined;
+    redactStreamDiagnosticsForLog?: boolean;
     responseHeaders: Record<string, string>;
   },
   deps: StreamingPipelineDeps = DEFAULT_DEPS
@@ -83,7 +84,8 @@ export function assembleStreamingPipeline(
   let piiStream = deps.pipeWithDisconnect(
     args.providerResponse,
     args.transformStream,
-    args.streamController
+    args.streamController,
+    { redactStreamDiagnosticsForLog: args.redactStreamDiagnosticsForLog }
   );
   if (typeof args.createPiiTransform === "function") {
     piiStream = piiStream.pipeThrough((args.createPiiTransform as () => TransformStream)());

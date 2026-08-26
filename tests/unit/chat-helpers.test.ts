@@ -9,6 +9,7 @@ const TEST_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-chat-help
 const TEST_APP_LOG_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-chat-helpers-log-"));
 const TEST_APP_LOG_PATH = path.join(TEST_APP_LOG_DIR, "app.log");
 process.env.DATA_DIR = TEST_DATA_DIR;
+process.env.APP_LOG_TO_FILE = "true";
 process.env.APP_LOG_FILE_PATH = TEST_APP_LOG_PATH;
 
 const core = await import("../../src/lib/db/core.ts");
@@ -26,6 +27,7 @@ const {
 const { getCircuitBreaker, resetAllCircuitBreakers, STATE } =
   await import("../../src/shared/utils/circuitBreaker.ts");
 const proxyLogger = await import("../../src/lib/proxyLogger.ts");
+const { logger: appLogger } = await import("../../src/shared/utils/logger.ts");
 // DATA_DIR must be fixed before these modules load; keep this test seam dynamic.
 const { setTlsClientForTest } = await import("../../open-sse/utils/proxyFetch.ts");
 
@@ -49,6 +51,16 @@ async function readAppLogWhen(
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   return fs.existsSync(TEST_APP_LOG_PATH) ? fs.readFileSync(TEST_APP_LOG_PATH, "utf8") : "";
+}
+
+async function flushAppLogger(): Promise<void> {
+  await new Promise<void>((resolveFlush) => {
+    try {
+      appLogger.flush(() => resolveFlush());
+    } catch {
+      resolveFlush();
+    }
+  });
 }
 
 async function seedConnection(provider, overrides = {}) {
@@ -463,6 +475,7 @@ test("handleNoCredentials omits transcript-sensitive upstream text from applicat
   const body = (await response.json()) as { error?: { message?: string } };
   assert.match(body.error?.message ?? "", new RegExp(rawCue));
 
+  await flushAppLogger();
   const contents = await readAppLogWhen(
     (value) => value.includes(provider) && value.includes("omitted: video transcript")
   );
@@ -726,6 +739,26 @@ test("safeLogEvents tolerates success and timeout payloads", () => {
     clientRawRequest: { endpoint: "/v1/chat/completions" },
     tlsFingerprintUsed: true,
   });
+});
+
+test("safeLogEvents preserves a null error for failures without error details", async () => {
+  const provider = "fu05-missing-error";
+  await safeLogEvents({
+    result: { success: false, status: 502 },
+    proxyInfo: { proxy: null, level: "direct", levelId: null },
+    proxyLatency: 25,
+    provider,
+    model: "fixture-model",
+    sourceFormat: "openai-chat",
+    targetFormat: "openai-chat",
+    credentials: { connectionId: "conn-missing-error" },
+    comboName: null,
+    clientRawRequest: { endpoint: "/v1/chat/completions" },
+  });
+
+  const entry = proxyLogger.getProxyLogs({ provider, limit: 1 })[0];
+  assert.ok(entry);
+  assert.equal(entry.error, null);
 });
 
 test("safeLogEvents omits failure text for transcript-sensitive requests", async () => {

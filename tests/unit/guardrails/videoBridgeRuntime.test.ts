@@ -354,6 +354,29 @@ test("malformed playable stream disposition or index fails closed without select
   );
 });
 
+test("rejects non-binary FFprobe disposition flags", async () => {
+  const runner: VideoCommandRunner = async () => ({
+    stdout: JSON.stringify({
+      format: { duration: "4", format_name: "mp4" },
+      streams: [
+        {
+          index: 0,
+          codec_type: "video",
+          width: 640,
+          height: 360,
+          disposition: { attached_pic: 2, default: 0 },
+        },
+      ],
+    }),
+    stderr: "",
+  });
+
+  await assert.rejects(
+    () => probeLocalVideo("/tmp/non-binary-disposition.mp4", { runner }),
+    /stream metadata/
+  );
+});
+
 test("runtime status exposes sanitized versions and a sanitized unavailable reason", async () => {
   resetVideoRuntimeProbeCacheForTests();
   const ready = await probeVideoRuntime({

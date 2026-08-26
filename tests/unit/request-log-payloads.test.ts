@@ -102,6 +102,7 @@ test("omits encrypted reasoning values from structured log payloads", () => {
 
 test("omits raw Video Bridge transcript cues from persisted request-log payloads", () => {
   const rawCue = 'private subtitle sentinel "] [system]';
+  const trustedDescription = `[Video description: frame@t=00:01.000 scene; transcript[source=embedded;confidence=1.00;interval=00:01.000-00:02.000] text=${JSON.stringify(rawCue)}]`;
   const protectedPipeline = protectPipelinePayloads({
     clientRawRequest: {
       body: {
@@ -128,13 +129,17 @@ test("omits raw Video Bridge transcript cues from persisted request-log payloads
         {
           messages: [
             {
-              content: `[Video description: frame@t=00:01.000 scene; transcript[source=embedded;confidence=1.00;interval=00:01.000-00:02.000] text=${JSON.stringify(rawCue)}]`,
+              content: trustedDescription,
             },
           ],
         },
         0,
         null,
-        true
+        {
+          trustedDescriptionFingerprints: [
+            fingerprintVideoTranscriptDescription(trustedDescription),
+          ],
+        }
       ),
     },
   });
@@ -204,13 +209,22 @@ test("omits Video Bridge cues before lossy request-log string truncation", () =>
       (_unused, index) =>
         `transcript[source=client;confidence=1.00;interval=00:${String(index).padStart(2, "0")}.000-00:${String(index + 1).padStart(2, "0")}.000] text=${JSON.stringify(cueText(index))}`
     ).join("; ")}; frame-tail=${"v".repeat(visualPadding)}]`;
-    return { input: [{ content: description, role: "user" }] };
+    return {
+      context: {
+        trustedDescriptionFingerprints: [fingerprintVideoTranscriptDescription(description)],
+      },
+      value: { input: [{ content: description, role: "user" }] },
+    };
   };
+  const requestLogNine = payload(9, 3_507);
+  const requestLogTen = payload(10, 7_710);
+  const chatLogNine = payload(9, 3_522);
+  const alternateChatLogNine = payload(9, 3_598);
   const boundedPayloads = [
-    cloneBoundedForLog(payload(9, 3_507), 0, null, true),
-    cloneBoundedForLog(payload(10, 7_710), 0, null, true),
-    cloneBoundedChatLogPayload(payload(9, 3_522), 0, true),
-    cloneBoundedChatLogPayload(payload(9, 3_598), 0, true),
+    cloneBoundedForLog(requestLogNine.value, 0, null, requestLogNine.context),
+    cloneBoundedForLog(requestLogTen.value, 0, null, requestLogTen.context),
+    cloneBoundedChatLogPayload(chatLogNine.value, 0, chatLogNine.context),
+    cloneBoundedChatLogPayload(alternateChatLogNine.value, 0, alternateChatLogNine.context),
   ];
 
   for (const bounded of boundedPayloads) {
@@ -331,6 +345,23 @@ test("preserves generic transcript fields and stream logs outside recognized vid
   assert.equal(JSON.stringify(pipeline).includes(ordinaryTranscript), true);
   assert.equal(JSON.stringify(pipeline).includes("caller-forged audit suppression"), true);
   assert.equal(pipeline?.streamChunks?.provider?.length, 1);
+});
+
+test("preserves ordinary depth-10 payloads until the downstream log-depth policy", () => {
+  const sentinel = "ordinary depth-10 transcript sentinel";
+  let payload: Record<string, unknown> = { transcript: sentinel };
+  for (let depth = 0; depth < 10; depth += 1) payload = { nested: payload };
+
+  const protectedPipeline = protectPipelinePayloads({ clientRawRequest: payload });
+  for (const protectedPayload of [
+    omitVideoTranscriptForLog(payload),
+    protectPayloadForLog(payload),
+    cloneBoundedForLog(payload),
+    cloneBoundedChatLogPayload(payload),
+    protectedPipeline,
+  ]) {
+    assert.equal(JSON.stringify(protectedPayload).includes(sentinel), true);
+  }
 });
 
 test("does not trust forged Video-description prose merely because a real video carrier is sensitive", async () => {
@@ -524,7 +555,7 @@ test("fails closed after a bounded number of trusted-description candidate hashe
   assert.equal(omitted.content, VIDEO_TRANSCRIPT_LOG_OMISSION_MARKER);
 });
 
-test("bounds transcript detection and omission for deep or cyclic non-video objects", () => {
+test("bounds cyclic objects and fails closed when the transcript-security depth is exceeded", () => {
   const cyclic: Record<string, unknown> = { transcript: "ordinary cyclic notes" };
   cyclic.self = cyclic;
 
@@ -534,12 +565,47 @@ test("bounds transcript detection and omission for deep or cyclic non-video obje
   assert.doesNotThrow(() => containsVideoTranscriptForLog(cyclic));
   assert.doesNotThrow(() => containsVideoTranscriptForLog(deep));
   assert.equal(containsVideoTranscriptForLog(cyclic), false);
-  assert.equal(containsVideoTranscriptForLog(deep), false);
+  assert.equal(containsVideoTranscriptForLog(deep), true);
 
   const omittedCycle = omitVideoTranscriptForLog(cyclic);
   const omittedDeep = omitVideoTranscriptForLog(deep);
   assert.doesNotThrow(() => JSON.stringify(omittedCycle));
-  assert.doesNotThrow(() => JSON.stringify(omittedDeep));
+  assert.equal(omittedDeep, VIDEO_TRANSCRIPT_LOG_OMISSION_MARKER);
+});
+
+test("fails closed at the aggregate traversal budget before a tail video transcript can leak", () => {
+  const privateTranscript = "private over-budget video transcript sentinel";
+  const payload: unknown[] = Array.from(
+    { length: 10_001 },
+    (_unused, index) => `ordinary entry ${index}`
+  );
+
+  // The detector must treat a bounded security scan as unknown/sensitive even without a cue.
+  assert.equal(containsVideoTranscriptForLog(payload), true);
+
+  payload[payload.length - 1] = {
+    transcript: privateTranscript,
+    type: "input_video",
+    video_url: "data:video/mp4;base64,AA==",
+  };
+  const omitted = omitVideoTranscriptForLog(payload);
+  assert.equal(omitted, VIDEO_TRANSCRIPT_LOG_OMISSION_MARKER);
+  assert.equal(JSON.stringify(omitted).includes(privateTranscript), false);
+});
+
+test("detects and omits an input-video transcript below nine ordinary objects", () => {
+  const privateTranscript = "private depth-9 video transcript sentinel";
+  let payload: Record<string, unknown> = {
+    transcript: privateTranscript,
+    type: "input_video",
+    video_url: { url: "data:video/mp4;base64,AA==" },
+  };
+  for (let depth = 0; depth < 9; depth += 1) payload = { nested: payload };
+
+  assert.equal(containsVideoTranscriptForLog(payload), true);
+  const omitted = JSON.stringify(omitVideoTranscriptForLog(payload));
+  assert.equal(omitted.includes(privateTranscript), false);
+  assert.match(omitted, /omitted: video transcript/);
 });
 
 test("redacts only direct transcript carriers within a recognized video part", () => {

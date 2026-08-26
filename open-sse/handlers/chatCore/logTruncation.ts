@@ -66,7 +66,7 @@ function cloneBoundedChatLogPayloadValue(value: unknown, depth = 0): unknown {
 export function cloneBoundedChatLogPayload(
   value: unknown,
   depth = 0,
-  descriptionContext: VideoTranscriptLogContext | boolean = false
+  descriptionContext: VideoTranscriptLogContext = {}
 ): unknown {
   const transcriptSafeValue =
     depth === 0 ? omitVideoTranscriptForLog(value, descriptionContext) : value;

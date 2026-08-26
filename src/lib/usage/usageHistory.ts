@@ -101,10 +101,7 @@ function normalizePendingMetadata(metadata?: PendingRequestMetadata): PendingReq
   const descriptionContext: VideoTranscriptLogContext = {
     trustedDescriptionFingerprints: metadata.videoTranscriptDescriptionFingerprints ?? [],
   };
-  const protectRequest = (
-    value: unknown,
-    logContext: VideoTranscriptLogContext | boolean = false
-  ): unknown =>
+  const protectRequest = (value: unknown, logContext: VideoTranscriptLogContext = {}): unknown =>
     truncatePendingPreview(protectPayloadForLog(omitVideoTranscriptForLog(value, logContext)));
   const protectResponse = (value: unknown): unknown =>
     transcriptSensitive ? VIDEO_TRANSCRIPT_LOG_OMISSION_MARKER : protectRequest(value);
@@ -126,7 +123,7 @@ function normalizePendingMetadata(metadata?: PendingRequestMetadata): PendingReq
         : null;
   }
   if (metadata.clientRequest !== undefined) {
-    normalized.clientRequest = protectRequest(metadata.clientRequest, false);
+    normalized.clientRequest = protectRequest(metadata.clientRequest, {});
   }
   if (metadata.providerRequest !== undefined) {
     normalized.providerRequest = protectRequest(metadata.providerRequest, descriptionContext);

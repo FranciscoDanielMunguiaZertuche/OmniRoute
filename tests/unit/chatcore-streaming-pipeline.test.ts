@@ -124,6 +124,20 @@ test("progress disabled → no progress header", () => {
   assert.deepEqual(args.responseHeaders, {});
 });
 
+test("pipeline forwards transcript-sensitive diagnostic retention policy", () => {
+  let receivedOptions: PipeWithDisconnectParameters[3] | undefined;
+  const { deps } = makeDeps({
+    pipeWithDisconnect: (...args: PipeWithDisconnectParameters) => {
+      receivedOptions = args[3];
+      return fakeStream("pii-base", []);
+    },
+  });
+
+  assembleStreamingPipeline(baseArgs({ redactStreamDiagnosticsForLog: true }), deps);
+
+  assert.equal(receivedOptions?.redactStreamDiagnosticsForLog, true);
+});
+
 test("echoModel set → echo transform applied last", () => {
   const { deps, log } = makeDeps();
   assembleStreamingPipeline(baseArgs({ echoModel: "alias-x" }), deps);

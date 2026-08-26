@@ -51,9 +51,14 @@ test("pipeWithDisconnect stall watchdog logs instead of silently swallowing a th
   };
 
   try {
-    const stream = pipeWithDisconnect(new Response(source), new TransformStream(), streamController, {
-      stallTimeoutMs: 40,
-    });
+    const stream = pipeWithDisconnect(
+      new Response(source),
+      new TransformStream(),
+      streamController,
+      {
+        stallTimeoutMs: 40,
+      }
+    );
     await readStreamText(stream);
   } finally {
     console.debug = originalDebug;
@@ -66,4 +71,46 @@ test("pipeWithDisconnect stall watchdog logs instead of silently swallowing a th
     loggedStallFailure,
     "a throwing handleError during the stall watchdog must be logged via console.debug, not swallowed"
   );
+});
+
+test("pipeWithDisconnect omits transcript-sensitive stall watchdog diagnostics", async () => {
+  const privateCue = "PRIVATE_VIDEO_CUE_stall_watchdog_4c91";
+  const source = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode("x"));
+    },
+    cancel() {},
+  });
+  const streamController = {
+    isConnected: () => true,
+    handleError() {
+      throw new Error(privateCue);
+    },
+    handleComplete() {},
+    abort() {},
+  };
+  const debugCalls = [];
+  const originalDebug = console.debug;
+  console.debug = (...args) => {
+    debugCalls.push(args);
+  };
+
+  try {
+    const stream = pipeWithDisconnect(
+      new Response(source),
+      new TransformStream(),
+      streamController,
+      {
+        redactStreamDiagnosticsForLog: true,
+        stallTimeoutMs: 40,
+      }
+    );
+    await readStreamText(stream);
+  } finally {
+    console.debug = originalDebug;
+  }
+
+  const retainedDiagnostics = debugCalls.flat().map(String).join(" ");
+  assert.equal(retainedDiagnostics.includes(privateCue), false);
+  assert.equal(retainedDiagnostics.includes("[omitted: video transcript]"), true);
 });

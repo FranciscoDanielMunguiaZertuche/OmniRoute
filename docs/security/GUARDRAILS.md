@@ -1,7 +1,7 @@
 ---
 title: "Guardrails"
 version: 3.8.50
-lastUpdated: 2026-08-24
+lastUpdated: 2026-08-26
 ---
 
 # Guardrails
@@ -449,6 +449,9 @@ bounded by the caller timeout and enclosing request abort signal, and each
 attempt has a 256 KiB output cap. Malformed WebVTT, invalid UTF-8, unsupported
 codecs, missing/empty tracks, and subtitle timeouts fail open to the already
 extracted video frames; request abort still propagates and cleanup still runs.
+Clean absence is cacheable, but a bounded decoder, process, or timeout failure is
+classified as transient and the whole-video result is not cached, so a later identical
+request retries embedded-text extraction instead of reusing a degraded result.
 
 This embedded-caption capability is deliberately format-limited, not universal.
 It is attempted only after the container has passed the Video runtime's exact
@@ -475,7 +478,9 @@ for positive overlap and clamped to that window before reconciliation; scoped
 embedded count/fingerprint metadata covers only the retained embedded cues.
 Cross-source duplicates require both a canonical text match (NFKC,
 case-insensitive, punctuation/symbol-insensitive, whitespace-collapsed) and a
-positive time overlap. Repeated text at disjoint times remains separate.
+positive time overlap. If that canonical identity is empty, as for symbol-only
+cues, exact normalized text is used instead so distinct observations such as
+music and bell symbols are not collapsed. Repeated text at disjoint times remains separate.
 Duplicate priority is deterministic: `client` > `embedded` > `audio-bridge`;
 the canonical cue retains every contributing source, the aggregate union
 interval, and highest confidence, plus source-specific contribution intervals
@@ -489,9 +494,10 @@ An advanced caller may provide an explicit `audioTranscript` track for the
 same video. Those cues must use the distinct caller-declared `audio-bridge`
 lane; the request cannot relabel them as client or embedded text, and this lane
 does not receive the server-derived trust assigned only to `embedded`. The fusion seam
-runs visual and audio observations under one deadline and abort signal, orders
-them on a common timeline, reconciles overlapping transcript duplicates with
-the policy above, and reports a partial result when only one side succeeds.
+runs visual and audio observations under one deadline and abort signal, reconciles
+overlapping transcript duplicates with the policy above, and reports a partial
+result when only one side succeeds. Preservation of the fused observation order
+in the final rendered description remains follow-up work rather than a completed claim.
 An invalid `audioTranscript` degrades to that partial result — the visual
 description is kept and the audio branch records a sanitized failure code —
 instead of failing the whole video. Per-branch availability, the partial flag,
@@ -566,9 +572,10 @@ result-cache value is the already-produced bounded description and therefore
 contains the text sent to the model.
 
 Call-log copies omit structured `transcript`/`audioTranscript` fields before
-lossy truncation. Server-side sensitivity is derived from a recognized
-structured video carrier or a successful Video Bridge result, never from
-caller-shaped plain text. A successful bridge rewrite carries only the exact
+lossy truncation. Server-side sensitivity is derived from a recognized structured
+video carrier, a successful Video Bridge result, or a bounded detector overflow
+treated as unknown-sensitive; delimiter-shaped caller prose alone never enables it.
+A successful bridge rewrite carries only the exact
 SHA-256 fingerprints plus bounded code-unit lengths of its generated transcript
 descriptions as out-of-band trust metadata; the raw cue text is not present in
 those identities. Log redaction verifies each exact generated segment, including
@@ -576,11 +583,15 @@ inside a provider string that concatenates translated text blocks, so adding a
 real video carrier cannot make an adjacent delimiter-shaped caller string trusted
 or omitted while the bounded scan stays within 128 description prefixes and 512
 candidate hashes. Above either CPU-work cap, the retained copy fails closed to one
-omission marker; the live request remains unchanged.
+omission marker; the live request remains unchanged. Structured traversal uses a
+separate security depth of 32 and an aggregate 10,000-entry budget, both above the
+ordinary log-depth policy; crossing either bound also fails closed to one marker.
 Sensitive requests also omit provider/client response and error bodies and
 suppress detailed and active stream-chunk capture even when pipeline logging is
-disabled. A plain request that merely spells a Video-description or transcript
-delimiter does not acquire those logging privileges. Because the
+disabled. Retained stream-controller and transform callback diagnostics use the
+same omission marker while the real error remains available to client handling and
+fallback classification. A plain request that merely spells a Video-description or
+transcript delimiter does not acquire those logging privileges. Because the
 retained call artifact no longer contains replay-complete media context, Responses
 `previous_response_id` lookup fails closed only when a trusted pipeline flag
 records Video-transcript redaction; caller text that spells the public omission
@@ -593,8 +604,9 @@ operator's existing non-log retention policy.
 
 FFmpeg receives the same private temporary `input.video`, which necessarily
 contains any embedded subtitle bytes, but no separate subtitle file is
-materialized: bounded WebVTT is read from stdout. The whole private temporary
-tree is deleted in `finally` on success, timeout, failure, or abort. This is a
+materialized: bounded WebVTT is consumed in memory from the FFmpeg child-process
+stdout and is not emitted to application logs. The whole private temporary tree
+is deleted in `finally` on success, timeout, failure, or abort. This is a
 temporary processing boundary, not a claim that the original video bytes never
 touch local disk.
 

@@ -138,6 +138,22 @@ test("normalizes overlapping WebVTT cues and clamps container rounding to the vi
   ]);
 });
 
+test("rejects overlong WebVTT lines and timestamp tokens before parsing them", () => {
+  assert.throws(
+    () =>
+      parseEmbeddedSubtitleWebVtt(
+        `WEBVTT\n\n${"i".repeat(4_097)}\n00:00.100 --> 00:01.000\ntext\n`,
+        2
+      ),
+    /line budget/i
+  );
+  assert.throws(
+    () =>
+      parseEmbeddedSubtitleWebVtt(`WEBVTT\n\n${"1".repeat(25)}:00:00.000 --> 00:01.000\ntext\n`, 2),
+    /timestamp budget/i
+  );
+});
+
 test("fractional-duration embedded cues survive millisecond normalization and broker round-trip", async () => {
   const durationSeconds = 1.0006;
   const cues = parseEmbeddedSubtitleWebVtt(
@@ -179,6 +195,154 @@ test("fractional-duration embedded cues survive millisecond normalization and br
   );
 
   assert.deepEqual(roundTripped.embeddedTranscript?.cues, cues);
+});
+
+test("broker preserves the bounded embedded subtitle extraction outcome", async () => {
+  const extracted = await extractVideoFramesViaBroker(
+    Buffer.from("safe-video"),
+    { frameCount: 1, timeoutMs: 5_000 },
+    {
+      fetchImpl: async () =>
+        Response.json({
+          durationSeconds: 2,
+          embeddedTranscriptOutcome: "transient_failure",
+          frames: [{ timestampSeconds: 0.5, dataUri: "data:image/jpeg;base64,QQ==" }],
+        }),
+    }
+  );
+
+  assert.equal(extracted.embeddedTranscriptOutcome, "transient_failure");
+});
+
+test("broker preserves a validated sampling focus window", async () => {
+  const extracted = await extractVideoFramesViaBroker(
+    Buffer.from("safe-video"),
+    { frameCount: 1, timeoutMs: 5_000 },
+    {
+      fetchImpl: async () =>
+        Response.json({
+          durationSeconds: 2,
+          frames: [{ timestampSeconds: 0.5, dataUri: "data:image/jpeg;base64,QQ==" }],
+          sampling: {
+            candidateCount: 1,
+            focusWindow: { endSeconds: 1.5, startSeconds: 0.25 },
+            policyEffective: "uniform",
+            policyRequested: "uniform",
+          },
+        }),
+    }
+  );
+
+  assert.deepEqual(extracted.sampling?.focusWindow, {
+    endSeconds: 1.5,
+    startSeconds: 0.25,
+  });
+});
+
+test("broker rejects unrecognized fields at every extraction response boundary", async () => {
+  const validFrame = { timestampSeconds: 0.5, dataUri: "data:image/jpeg;base64,QQ==" };
+  const payloads = [
+    { durationSeconds: 2, frames: [validFrame], unexpected: true },
+    { durationSeconds: 2, frames: [{ ...validFrame, unexpected: true }] },
+    {
+      durationSeconds: 2,
+      frames: [validFrame],
+      sampling: {
+        candidateCount: 1,
+        policyEffective: "uniform",
+        policyRequested: "uniform",
+        unexpected: true,
+      },
+    },
+    {
+      durationSeconds: 2,
+      frames: [validFrame],
+      sampling: {
+        candidateCount: -1,
+        policyEffective: "uniform",
+        policyRequested: "uniform",
+      },
+    },
+    {
+      durationSeconds: 2,
+      frames: [validFrame],
+      sampling: {
+        candidateCount: 1.5,
+        policyEffective: "uniform",
+        policyRequested: "uniform",
+      },
+    },
+  ];
+
+  for (const payload of payloads) {
+    await assert.rejects(
+      () =>
+        extractVideoFramesViaBroker(
+          Buffer.from("safe-video"),
+          { frameCount: 1, timeoutMs: 5_000 },
+          { fetchImpl: async () => Response.json(payload) }
+        ),
+      /invalid/i
+    );
+  }
+});
+
+test("broker rejects frames outside the duration or in descending timestamp order", async () => {
+  const jpeg = "data:image/jpeg;base64,QQ==";
+  for (const frames of [
+    [{ timestampSeconds: 2.5, dataUri: jpeg }],
+    [
+      { timestampSeconds: 1.5, dataUri: jpeg },
+      { timestampSeconds: 0.5, dataUri: jpeg },
+    ],
+  ]) {
+    await assert.rejects(
+      () =>
+        extractVideoFramesViaBroker(
+          Buffer.from("safe-video"),
+          { frameCount: 2, timeoutMs: 5_000 },
+          {
+            fetchImpl: async () => Response.json({ durationSeconds: 2, frames }),
+          }
+        ),
+      /invalid frame/i
+    );
+  }
+});
+
+test("broker rejects unbounded or inconsistent embedded subtitle outcomes", async () => {
+  const validFrame = { timestampSeconds: 0.5, dataUri: "data:image/jpeg;base64,QQ==" };
+  for (const payload of [
+    {
+      durationSeconds: 2,
+      embeddedTranscriptOutcome: "retry_later",
+      frames: [validFrame],
+    },
+    {
+      durationSeconds: 2,
+      embeddedTranscriptOutcome: "success",
+      frames: [validFrame],
+    },
+    {
+      durationSeconds: 2,
+      embeddedTranscript: {
+        cues: [],
+        fingerprint: fingerprintVideoTranscriptCues([]),
+      },
+      embeddedTranscriptOutcome: "success",
+      frames: [validFrame],
+    },
+  ]) {
+    await assert.rejects(
+      () =>
+        extractVideoFramesViaBroker(
+          Buffer.from("safe-video"),
+          { frameCount: 1, timeoutMs: 5_000 },
+          { fetchImpl: async () => Response.json(payload) }
+        ),
+      /invalid/i
+    );
+  }
 });
 
 test("rejects invalid subtitle encoding and enforces cue, per-text, and total-text budgets", () => {
@@ -269,6 +433,62 @@ test("rejects invalid subtitle encoding and enforces cue, per-text, and total-te
   );
 });
 
+test("rejects an oversized cue array before traversing attacker-controlled entries", () => {
+  const oversized = new Array(VIDEO_TRANSCRIPT_MAX_CUES + 1);
+  Object.defineProperty(oversized, 0, {
+    get() {
+      throw new Error("oversized cue array was traversed");
+    },
+  });
+
+  assert.throws(() => normalizeVideoTranscript(oversized, 2, "client"), /cue budget/i);
+});
+
+test("rejects unknown transcript fields and bounds raw cue text before normalization", () => {
+  assert.throws(
+    () =>
+      normalizeVideoTranscript(
+        {
+          cues: [
+            {
+              end: 1,
+              source: "client",
+              start: 0,
+              text: "valid cue",
+              unexpected: true,
+            },
+          ],
+        },
+        2,
+        "client"
+      ),
+    /invalid/i
+  );
+  assert.throws(
+    () =>
+      normalizeVideoTranscript(
+        {
+          cues: [{ end: 1, source: "client", start: 0, text: "valid cue" }],
+          unexpected: true,
+        },
+        2,
+        "client"
+      ),
+    /invalid/i
+  );
+  assert.throws(
+    () =>
+      normalizeVideoTranscript(
+        {
+          cues: [{ end: 1, source: "client", start: 0, text: `a${" ".repeat(4_097)}b` }],
+        },
+        2,
+        "client"
+      ),
+    /budget|limit/i
+  );
+});
+
 test("bounds stream attempts and uses fixed local-only FFmpeg argv", async () => {
   const calls: Array<{ args: string[]; maxBufferBytes?: number; timeoutMs: number }> = [];
   const result = await extractEmbeddedVideoTranscript("/tmp/input.mkv", {
@@ -290,7 +510,7 @@ test("bounds stream attempts and uses fixed local-only FFmpeg argv", async () =>
     timeoutMs: 30_000,
   });
 
-  assert.equal(result, undefined);
+  assert.deepEqual(result, { outcome: "transient_failure" });
   assert.equal(calls.length, 2);
   assert.deepEqual(
     calls.map((call) => call.args[call.args.indexOf("-map") + 1]),
@@ -328,7 +548,7 @@ test("shares one caller-bounded timeout budget across subtitle stream attempts",
     timeoutMs: 5_000,
   });
 
-  assert.equal(result, undefined);
+  assert.deepEqual(result, { outcome: "transient_failure" });
   assert.deepEqual(timeouts, [5_000, 2_000]);
 });
 
@@ -348,7 +568,7 @@ test("rejects malformed stream descriptors before constructing FFmpeg argv", asy
     timeoutMs: 5_000,
   });
 
-  assert.equal(result, undefined);
+  assert.deepEqual(result, { outcome: "absent" });
   assert.equal(runnerCalls, 0);
 });
 
@@ -376,7 +596,7 @@ test("a malformed preferred stream fails open to the next supported text stream"
   });
 
   assert.deepEqual(attemptedMaps, ["0:1", "0:2"]);
-  assert.equal(result?.cues[0].text, "valid fallback cue");
+  assert.equal(result.transcript?.cues[0].text, "valid fallback cue");
 });
 
 test("a missing or unsupported subtitle stream fails open without spawning a subtitle pass", async () => {
@@ -392,8 +612,40 @@ test("a missing or unsupported subtitle stream fails open without spawning a sub
     timeoutMs: 5_000,
   });
 
-  assert.equal(absent, undefined);
+  assert.deepEqual(absent, { outcome: "absent" });
   assert.equal(runnerCalls, 0);
+});
+
+test("classifies clean subtitle absence separately from bounded transient failures", async () => {
+  const absent = await extractEmbeddedVideoTranscript("/tmp/input.mp4", {
+    durationSeconds: 5,
+    formatWhitelist: "mp4",
+    runner: async () => {
+      throw new Error("must not run");
+    },
+    streams: [],
+    timeoutMs: 5_000,
+  });
+
+  assert.deepEqual(absent, { outcome: "absent" });
+
+  for (const error of [
+    Object.assign(new Error("subtitle timeout"), { code: "ETIMEDOUT" }),
+    Object.assign(new Error("ffmpeg unavailable"), { code: "ENOENT" }),
+    new Error("bounded decoder failure"),
+  ]) {
+    const degraded = await extractEmbeddedVideoTranscript("/tmp/input.mp4", {
+      durationSeconds: 5,
+      formatWhitelist: "mp4",
+      runner: async () => {
+        throw error;
+      },
+      streams: [{ codecName: "subrip", default: true, streamIndex: 1 }],
+      timeoutMs: 5_000,
+    });
+
+    assert.deepEqual(degraded, { outcome: "transient_failure" });
+  }
 });
 
 test("probe excludes unsupported subtitle codecs from the extraction candidate list", async () => {
@@ -414,6 +666,44 @@ test("probe excludes unsupported subtitle codecs from the extraction candidate l
   const metadata = await probeLocalVideo("/tmp/input.mkv", { runner });
 
   assert.deepEqual(metadata.subtitleStreams, []);
+});
+
+test("probe accepts bounded FFprobe program and stream-group envelope sections", async () => {
+  const runner: VideoCommandRunner = async () => ({
+    stderr: "",
+    stdout: JSON.stringify({
+      format: { duration: "2", format_name: "matroska,webm" },
+      programs: [{}],
+      stream_groups: [{}],
+      streams: [{ index: 0, codec_name: "ffv1", codec_type: "video", width: 160, height: 90 }],
+    }),
+  });
+
+  const metadata = await probeLocalVideo("/tmp/input.mkv", { runner });
+
+  assert.equal(metadata.streamIndex, 0);
+  assert.equal(metadata.durationSeconds, 2);
+});
+
+test("probe rejects unrecognized ffprobe response fields", async () => {
+  const runner: VideoCommandRunner = async () => ({
+    stderr: "",
+    stdout: JSON.stringify({
+      format: { duration: "2", format_name: "matroska,webm" },
+      streams: [
+        {
+          codec_name: "ffv1",
+          codec_type: "video",
+          height: 90,
+          index: 0,
+          unexpected: true,
+          width: 160,
+        },
+      ],
+    }),
+  });
+
+  await assert.rejects(() => probeLocalVideo("/tmp/input.mkv", { runner }), /metadata|invalid/i);
 });
 
 test("subtitle timeout fails open and the shared byte-extraction lifecycle removes temp files", async () => {
@@ -447,6 +737,7 @@ test("subtitle timeout fails open and the shared byte-extraction lifecycle remov
 
   assert.equal(result.frames.length, 1);
   assert.equal(result.embeddedTranscript, undefined);
+  assert.equal(result.embeddedTranscriptOutcome, "transient_failure");
   assert.notEqual(temporaryInput, "");
   await assert.rejects(() => access(temporaryInput));
 });
