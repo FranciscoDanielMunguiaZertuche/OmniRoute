@@ -61,14 +61,14 @@
 
 <div align="center">
 
-|                               | v3.8.49 | **v3.8.50** | `v3.8.51+`  |
-| ----------------------------- | :-----: | :---------: | :---------: |
-| 🌐 Sağlayıcılar               |   290   |   **342**   | kuyrukta dahası var |
-| 🧠 Belgelenmiş modeller       |  1185   |  **1202**   |      —      |
-| 🖼️ Modalite Köprüsü (Modality Bridge) |    —    |  🆕 vision  |    video    |
-| 📡 Radar ücretsiz kataloğu    |    —    | 🆕 isteğe bağlı |      —      |
-| ⚖️ Kota duyarlı zamanlama     |    —    |      —      |  🔭 sırada  |
-| 📊 Kota telemetrisi           |    —    |      —      |  🔭 sırada  |
+|                                       | v3.8.49 |   **v3.8.50**   |     `v3.8.51+`      |
+| ------------------------------------- | :-----: | :-------------: | :-----------------: |
+| 🌐 Sağlayıcılar                       |   290   |     **342**     | kuyrukta dahası var |
+| 🧠 Belgelenmiş modeller               |  1185   |    **1202**     |          —          |
+| 🖼️ Modalite Köprüsü (Modality Bridge) |    —    |    🆕 vision    |        video        |
+| 📡 Radar ücretsiz kataloğu            |    —    | 🆕 isteğe bağlı |          —          |
+| ⚖️ Kota duyarlı zamanlama             |    —    |        —        |      🔭 sırada      |
+| 📊 Kota telemetrisi                   |    —    |        —        |      🔭 sırada      |
 
 **→ [Yol Haritası](ROADMAP.md) — `v3.9.0 LTS` hedefine doğru ilerliyor**
 
@@ -189,7 +189,7 @@
 
 </div>
 
-<img src="./docs/diagrams/works-zero-config.svg" width="100%" alt="Works the second you install it — zero config. Three steps: 1. Install — npm i -g omniroute, server boots on localhost:20128. 2. Point your tool at http://localhost:20128/v1 — any OpenAI-compatible tool (Claude Code, Cursor, Cline). 3. It answers — call model auto for an instant reply, with no API key, no signup, no configuration. Keyless free providers OpenCode Free and Felo are pre-wired into the auto combo, so a fresh install responds out of the box."/>
+<img src="./docs/diagrams/works-zero-config.svg" width="100%" alt="Works the second you install it — zero config. Three steps: 1. Install — npm i -g omniroute, server boots on localhost:20128. 2. Point your tool at http://localhost:20128/v1 — any OpenAI-compatible tool (Claude Code, Cursor, Cline). 3. It answers — call model auto for an instant reply, with no API key, no signup, no configuration. OpenCode Free is pre-wired into the auto combo, so a fresh install responds out of the box."/>
 
 ```bash
 # Fresh install, zero credentials — `auto` already works:
@@ -198,7 +198,7 @@ curl http://localhost:20128/v1/chat/completions \
   -d '{"model":"auto","messages":[{"role":"user","content":"Hello!"}]}'
 ```
 
-<sub>Belirli bir ücretsiz arka uç mu tercih ediyorsunuz? Doğrudan çağırın, örn. `oc/…` (OpenCode Free) veya `felo/…` (Felo). Ardından `auto` modeline geçin ve seçimi OmniRoute'a bırakın.</sub>
+<sub>Belirli bir ücretsiz arka uç mu tercih ediyorsunuz? Doğrudan `oc/…` (OpenCode Free) çağırın. Ardından `auto` modeline geçin ve seçimi OmniRoute'a bırakın.</sub>
 
 <sub>📦 **Python, Node.js, PHP ve cURL** için kopyala-yapıştır hızlı başlangıç betikleri → [`examples/quickstart/`](examples/quickstart/)</sub>
 
@@ -973,11 +973,11 @@ docker run -d --name omniroute --restart unless-stopped --stop-timeout 40 \
 
 `:latest` etiketi **yayımlanmış** en yüksek kararlı SemVer sürümünü takip eder. Git `main` dalını takip etmez. GitOps için `:X.Y.Z` sürümünü sabitleyin. Bkz. [Docker Sürüm Kanalları](docs/guides/DOCKER_GUIDE.md#release-channels). İmaj **`OMNIROUTE_MEMORY_MB=1024`** değerini sabitler. Bu, pano ve hafif bir sohbet için yeterlidir. **Kodlama ajanları** (Claude Code, Codex, Grok, vb.'den gelen `POST /v1/responses`), çok daha büyük bir V8 heap alanına ihtiyaç duyar; aksi takdirde iki örtüşen uzun bağlam altında süreç ~12 GiB seviyesinde `FATAL ERROR` verir. Konteyneri heap boyutunun üzerinde boyutlandırın (yerel arabellekler V8'in dışında yer alır):
 
-| İş Yükü                             | Heap (`-e OMNIROUTE_MEMORY_MB`) | Konteyner (`--memory`) |
-| ----------------------------------- | ------------------------------- | ---------------------- |
-| Pano / hafif sohbet                 | `1024` (imaj varsayılanı)       | ≥2 g                   |
-| Tek bir kodlama ajanı               | `8192`                          | ≥10 g                  |
-| İki eşzamanlı uzun `/v1/responses`  | `10240`–`12288`                 | ≥12–16 g               |
+| İş Yükü                            | Heap (`-e OMNIROUTE_MEMORY_MB`) | Konteyner (`--memory`) |
+| ---------------------------------- | ------------------------------- | ---------------------- |
+| Pano / hafif sohbet                | `1024` (imaj varsayılanı)       | ≥2 g                   |
+| Tek bir kodlama ajanı              | `8192`                          | ≥10 g                  |
+| İki eşzamanlı uzun `/v1/responses` | `10240`–`12288`                 | ≥12–16 g               |
 
 ```bash
 docker run -d --name omniroute --restart unless-stopped --stop-timeout 40 \
@@ -996,6 +996,7 @@ Tam tablo: [Docker Kılavuzu — çalışma zamanı RAM](docs/guides/DOCKER_GUID
 **🥟 Bun**
 
 Standart `bun install` ve genel kurulum (`bun install -g omniroute`), Bun çalışma zamanı algılamasıyla desteklenir:
+
 - **Yerleşik `bun:sqlite`**: OmniRoute, Bun altında çalışırken Bun'ın yerleşik `bun:sqlite` sürücüsünü kullanır; Node.js altında `better-sqlite3` veya `sql.js`'e geri döner.
 - **Otomatik Webpack paketleyici seçimi**: Geliştirme (`bun run dev`) ve üretim derlemeleri (`bun run build`), Bun'ı otomatik olarak algılar ve yerel V8 bağlama uyumsuzluklarını önlemek için Turbopack yerine Webpack'i seçer.
 - **Özel Bun Dockerfile**: Yerel Bun üretim dağıtımları için çok aşamalı `Dockerfile.bun` (`docker build -f Dockerfile.bun -t omniroute:bun .`).
@@ -1153,19 +1154,19 @@ Doğrulama metrikleri: 1002 takip edilen video · 7.069.190 bilinen görüntüle
 
 > Her şey tek bir yerde — geliştiriciyi takip edin, toplulukla sohbet edin veya bir issue açın.
 
-| Kanal                                       | Nerede / Nasıl                                                                                                            |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| 💼 **LinkedIn** — geliştiriciyi takip edin  | [linkedin.com/in/diegosouzapw](https://www.linkedin.com/in/diegosouzapw/)                                                 |
-| 🐙 **GitHub** — sürümler ve ipuçları için   | [@diegosouzapw](https://github.com/diegosouzapw)                                                                          |
-| 💬 **Discord**                              | [discord.gg/U47eFqAXCn](https://discord.gg/U47eFqAXCn)                                                                    |
-| ✈️ **Telegram**                             | [t.me/omnirouteOficial](https://t.me/omnirouteOficial)                                                                    |
-| 🟢 **WhatsApp — 🌍 Global**                 | [gruba katılın](https://chat.whatsapp.com/JI7cDQ1GyaiDHhVBpLxf8b?mode=gi_t)                                              |
-| 🟢 **WhatsApp — 🇧🇷 Brezilya**               | [gruba katılın](https://chat.whatsapp.com/LTSpdFhXTxjH4R6CCNiKWz)                                                        |
-| 🌍 **Web Sitesi**                           | [omniroute.online](https://omniroute.online)                                                                              |
-| 📦 **Kaynak Kod**                           | [github.com/diegosouzapw/OmniRoute](https://github.com/diegosouzapw/OmniRoute)                                            |
-| 🐛 **Hata Bildirimi**                       | [issue açın](https://github.com/diegosouzapw/OmniRoute/issues) — `npm run system-info` çıktısını ekleyin                  |
-| 🤝 **Katkıda Bulunun**                      | [CONTRIBUTING.md](CONTRIBUTING.md) · [Dallanma ve Sürüm Modeli](docs/ops/BRANCHING_MODEL.md) · bir `good first issue` seçin |
-| 💚 **Projeyi Destekleyin**                  | [Destekleme yolları ↑](#-omnirouteu-destekleyin) · [GitHub Sponsors](https://github.com/sponsors/diegosouzapw)           |
+| Kanal                                      | Nerede / Nasıl                                                                                                              |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| 💼 **LinkedIn** — geliştiriciyi takip edin | [linkedin.com/in/diegosouzapw](https://www.linkedin.com/in/diegosouzapw/)                                                   |
+| 🐙 **GitHub** — sürümler ve ipuçları için  | [@diegosouzapw](https://github.com/diegosouzapw)                                                                            |
+| 💬 **Discord**                             | [discord.gg/U47eFqAXCn](https://discord.gg/U47eFqAXCn)                                                                      |
+| ✈️ **Telegram**                            | [t.me/omnirouteOficial](https://t.me/omnirouteOficial)                                                                      |
+| 🟢 **WhatsApp — 🌍 Global**                | [gruba katılın](https://chat.whatsapp.com/JI7cDQ1GyaiDHhVBpLxf8b?mode=gi_t)                                                 |
+| 🟢 **WhatsApp — 🇧🇷 Brezilya**              | [gruba katılın](https://chat.whatsapp.com/LTSpdFhXTxjH4R6CCNiKWz)                                                           |
+| 🌍 **Web Sitesi**                          | [omniroute.online](https://omniroute.online)                                                                                |
+| 📦 **Kaynak Kod**                          | [github.com/diegosouzapw/OmniRoute](https://github.com/diegosouzapw/OmniRoute)                                              |
+| 🐛 **Hata Bildirimi**                      | [issue açın](https://github.com/diegosouzapw/OmniRoute/issues) — `npm run system-info` çıktısını ekleyin                    |
+| 🤝 **Katkıda Bulunun**                     | [CONTRIBUTING.md](CONTRIBUTING.md) · [Dallanma ve Sürüm Modeli](docs/ops/BRANCHING_MODEL.md) · bir `good first issue` seçin |
+| 💚 **Projeyi Destekleyin**                 | [Destekleme yolları ↑](#-omnirouteu-destekleyin) · [GitHub Sponsors](https://github.com/sponsors/diegosouzapw)              |
 
 </div>
 

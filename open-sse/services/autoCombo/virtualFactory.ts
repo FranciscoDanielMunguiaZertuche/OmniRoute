@@ -212,8 +212,8 @@ const SYNTHETIC_NOAUTH_CONNECTION_ID = RESILIENCE_NOAUTH_CONNECTION_ID;
 
 // Allowlist of no-auth (keyless) providers permitted to enter the `auto`/`auto-*`
 // candidate pool. Narrowed to the backends verified to answer without any
-// configuration on our reference egress (VPS .15): `opencode` and `felo-web`
-// both return 200 there, while duckduckgo-web (429/VQD rate limit), theoldllm
+// configuration on our reference egress (VPS .15): `opencode` returns 200
+// there, while duckduckgo-web (429/VQD rate limit), theoldllm
 // (403 Vercel egress block), chipotle (502), aihorde (401, anon key rejected)
 // and the others are unreliable. The excluded providers stay fully usable via
 // direct `<alias>/<model>` calls — they are just kept OUT of auto-routing until
@@ -227,7 +227,7 @@ const SYNTHETIC_NOAUTH_CONNECTION_ID = RESILIENCE_NOAUTH_CONNECTION_ID;
 // pool, so it admits any no-auth backend that genuinely serves the family (e.g.
 // auggie, a local CLI subprocess with zero HTTP egress, belongs in auto/glm
 // regardless of this list). See the `bypassAllowlist` param below.
-const AUTO_COMBO_NOAUTH_ALLOWLIST = new Set<string>(["opencode", "felo-web"]);
+const AUTO_COMBO_NOAUTH_ALLOWLIST = new Set<string>(["opencode"]);
 
 function isChatAutoComboNoAuthProvider(
   providerDef: NoAuthProviderDefinition,

@@ -1,7 +1,7 @@
 ---
 title: "Free Tiers & Free-Token Budget"
-version: 3.8.40
-lastUpdated: 2026-07-31
+version: 3.8.50
+lastUpdated: 2026-08-26
 ---
 
 # Free Tiers & Free-Token Budget
@@ -21,13 +21,13 @@ lastUpdated: 2026-07-31
 | **+ deposit-unlock boost**                  | **+~24M**         | A one-time **$10** OpenRouter top-up raises its free pool from 50 → 1000 req/day. Reported separately so it never inflates the steady number.                                                                                                          |
 | Theoretical ceiling (all rate limits, 24/7) | ~10B              | Sum of every provider rate limit extrapolated to non-stop use. **Not a guarantee** — do not headline this.                                                                                                                                             |
 
-**Honest headline:** _OmniRoute aggregates **~1.51B documented free tokens per month** (up to ~2.13B in your first month with signup credits) across 42 free-tier pools — plus a long tail of permanently-free, no-cap providers — and RTK + Caveman compression (15–95% token savings) stretches that further._
+**Honest headline:** _OmniRoute aggregates **~1.51B documented free tokens per month** (up to ~2.13B in your first month with signup credits) across 39 free-tier pools — plus a long tail of permanently-free, no-cap providers — and RTK + Caveman compression (15–95% token savings) stretches that further._
 
 > **Why this dropped from the previous ~1.94B.** The 2026-06-17 refresh is an honesty correction, not a loss: `gemini` is now pool-deduped (was inflated by counting each Flash variant separately, 462M → 60M), `cloudflare-ai` corrected to its real 10k-Neurons/day (122M → 30M), `doubao` reclassified as a one-time signup credit (not recurring), and shut-down tiers removed (`chutes`/`phind`/`kluster` discontinued). Partly offset by `llm7` (correct 5M/day → 150M) and new free providers (Kilo, OpenCode Zen, Z.AI GLM-Flash).
 >
 > **Further corrected to ~1.37B in v3.8.42:** `longcat` was reclassified from a 150M/mo recurring grant to a one-time 10M signup credit after its free preview ended. Same honesty rule — no provider was dropped by mistake.
 >
-> **Updated to ~1.51B after removing a retired provider:** the pool count is now 42 after mapping free tiers that were documented upstream but missing from the catalog (`requesty`, `ovhcloud`, `agnes`, `glm`) plus new providers `navy` and `aihorde` (#7840). This is the live, CI-gated number (`check:docs-counts` fails the build if this drifts from `computeFreeModelTotals()`).
+> **Updated on 2026-08-26 after retiring Felo Web:** the source now reports 39 recurring pool keys. Felo Web is excluded while its GPL-derived provenance/licensing remains on HOLD. This is the live, CI-gated number (`check:docs-counts` fails the build if this drifts from `computeFreeModelTotals()`).
 
 Biggest **documented** contributors: `mistral` 1.00B, `llm7` 150M, `groq` 117M, `gemini` 60M, `cerebras` 30M, `cloudflare-ai` 30M, `sambanova` 30M. (`longcat` is excluded — its 10M LongCat-2.0 grant is a one-time, KYC-gated signup credit, not a recurring monthly budget.)
 

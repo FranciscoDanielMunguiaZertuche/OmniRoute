@@ -1,3 +1,5 @@
+import { isRuntimeRetiredProviderId } from "@/shared/constants/providerRetirement";
+
 import { SEARCH_PROVIDERS } from "../config/searchRegistry.ts";
 import { registerExecutor, getRegisteredExecutor, hasRegisteredExecutor } from "./registry.ts";
 import type { BaseExecutor } from "./base.ts";
@@ -50,7 +52,6 @@ import { MicrosoftDesignerWebExecutor } from "./microsoft-designer-web.ts";
 import { AdobeFireflyExecutor } from "./adobe-firefly.ts";
 import { VeoAIFreeWebExecutor } from "./veoaifree-web.ts";
 import { DuckDuckGoWebExecutor } from "./duckduckgo-web.ts";
-import { FeloWebExecutor } from "./felo-web.ts";
 import { T3ChatWebExecutor } from "./t3-chat-web.ts";
 import { ClaudeWebExecutor } from "./claude-web.ts";
 import { InnerAiExecutor } from "./inner-ai.ts";
@@ -170,8 +171,6 @@ const executors = {
   "veo-free": new VeoAIFreeWebExecutor(), // Alias
   "duckduckgo-web": new DuckDuckGoWebExecutor(),
   ddgw: new DuckDuckGoWebExecutor(), // Alias
-  "felo-web": new FeloWebExecutor(),
-  felo: new FeloWebExecutor(), // Alias
   "t3-web": new T3ChatWebExecutor(),
   t3chat: new T3ChatWebExecutor(), // Alias
   "inner-ai": new InnerAiExecutor(),
@@ -268,6 +267,11 @@ const CHAT_UNSUPPORTED_CLOUD_AGENT_PROVIDERS = new Set(["jules"]);
 const CHAT_UNSUPPORTED_SEARCH_PROVIDERS = new Set(Object.keys(SEARCH_PROVIDERS));
 
 export function getExecutor(provider) {
+  if (isRuntimeRetiredProviderId(provider)) {
+    const err = new Error("Provider is retired and unavailable.");
+    (err as Error & { status?: number }).status = 410;
+    throw err;
+  }
   const registered = getRegisteredExecutor(provider);
   if (registered) return registered;
   if (CHAT_UNSUPPORTED_CLOUD_AGENT_PROVIDERS.has(provider)) {
@@ -335,7 +339,6 @@ export { MicrosoftDesignerWebExecutor } from "./microsoft-designer-web.ts";
 export { AdobeFireflyExecutor } from "./adobe-firefly.ts";
 export { VeoAIFreeWebExecutor } from "./veoaifree-web.ts";
 export { DuckDuckGoWebExecutor } from "./duckduckgo-web.ts";
-export { FeloWebExecutor } from "./felo-web.ts";
 export { ClaudeWebExecutor } from "./claude-web.ts";
 export { DeepSeekWebExecutor } from "./deepseek-web.ts";
 export { DeepSeekWebWithAutoRefreshExecutor } from "./deepseek-web-with-auto-refresh.ts";

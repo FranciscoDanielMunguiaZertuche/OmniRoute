@@ -280,16 +280,6 @@
       "configSource": "freebuff",
       "provider": "freebuff"
     },
-    "felo": {
-      "className": "FeloWebExecutor",
-      "configSource": "<custom-config>",
-      "provider": "felo-web"
-    },
-    "felo-web": {
-      "className": "FeloWebExecutor",
-      "configSource": "<custom-config>",
-      "provider": "felo-web"
-    },
     "firefly": {
       "className": "AdobeFireflyExecutor",
       "configSource": "<custom-config>",
@@ -711,6 +701,6 @@
       "provider": "zai-web"
     }
   },
-  "keyCount": 142,
+  "keyCount": 140,
   "sharedInstances": []
 }

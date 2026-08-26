@@ -205,14 +205,14 @@ test("createVirtualAutoCombo includes no-auth OpenCode Free without provider_con
 
 test("createVirtualAutoCombo restricts the no-auth pool to the allowlist", async () => {
   // Policy: the no-auth (keyless) auto-combo allowlist is narrowed to `opencode`
-  // and `felo-web` (open-sse/services/autoCombo/virtualFactory.ts::AUTO_COMBO_NOAUTH_ALLOWLIST) —
-  // the keyless backends verified to work without configuration on our reference
+  // (open-sse/services/autoCombo/virtualFactory.ts::AUTO_COMBO_NOAUTH_ALLOWLIST) —
+  // the keyless backend verified to work without configuration on our reference
   // egress. The others stay usable via direct `<alias>/<model>` calls but must
   // NOT be auto-routed to. Dedicated guard:
   // tests/unit/noauth-autocombo-allowlist.test.ts.
   const combo: VirtualComboResult = await virtualFactory.createVirtualAutoCombo("fast");
 
-  for (const allowed of ["opencode", "felo-web"]) {
+  for (const allowed of ["opencode"]) {
     const models = combo.models.filter((m) => m.providerId === allowed);
     assert.ok(models.length >= 1, `${allowed} should have at least one model`);
     assert.ok(

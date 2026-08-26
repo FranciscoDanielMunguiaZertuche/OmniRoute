@@ -12,6 +12,7 @@
 <br/>
 
 <a id="-omniroute"></a>
+
 # 🚀 OmniRoute — Il Gateway AI Gratuito
 
 <img src="../../diagrams/readme-hero.svg" width="100%" alt="OmniRoute — Non smettere mai di programmare. Ogni strumento AI → 349 provider — oltre 90 gratuiti — tramite un unico endpoint. Collega Claude Code, Codex, Cursor, Cline, Copilot e Antigravity a Claude / GPT / Gemini GRATUITI con fallback automatico. La compressione combinata RTK + Caveman riduce i token del 15–95% (~89% in media) — per non raggiungere i limiti. 350 provider AI · oltre 90 tier gratuiti · ~1,51 miliardi di token gratuiti/mese · 19 strategie di routing · $0 per iniziare."/>
@@ -68,14 +69,14 @@
 
 <div align="center">
 
-|                           | v3.8.49 | **v3.8.50** | `v3.8.51+`        |
-| ------------------------- | :-----: | :---------: | :---------------: |
-| 🌐 Provider               |   290   |   **342**   | altri in arrivo   |
-| 🧠 Modelli documentati    |  1185   |  **1202**   |         —         |
-| 🖼️ Modality Bridge        |    —    |  🆕 vision  |       video       |
-| 📡 Catalogo gratuito Radar|    —    |  🆕 opt-in  |         —         |
-| ⚖️ Scheduling quota-aware |    —    |      —      |   🔭 prossimamente|
-| 📊 Telemetria delle quote |    —    |      —      |   🔭 prossimamente|
+|                            | v3.8.49 | **v3.8.50** |    `v3.8.51+`    |
+| -------------------------- | :-----: | :---------: | :--------------: |
+| 🌐 Provider                |   290   |   **342**   | altri in arrivo  |
+| 🧠 Modelli documentati     |  1185   |  **1202**   |        —         |
+| 🖼️ Modality Bridge         |    —    |  🆕 vision  |      video       |
+| 📡 Catalogo gratuito Radar |    —    |  🆕 opt-in  |        —         |
+| ⚖️ Scheduling quota-aware  |    —    |      —      | 🔭 prossimamente |
+| 📊 Telemetria delle quote  |    —    |      —      | 🔭 prossimamente |
 
 **→ [Roadmap](../../../ROADMAP.md) — verso `v3.9.0 LTS`**
 
@@ -193,11 +194,12 @@
 <div align="center">
 
 <a id="-works-the-second-you-install-it--no-keys-no-config"></a>
+
 ## 🆓 Funziona subito dopo l'installazione — nessuna chiave, nessuna configurazione
 
 </div>
 
-<img src="../../diagrams/works-zero-config.svg" width="100%" alt="Funziona subito dopo l'installazione — configurazione zero. Tre passaggi: 1. Installa — npm i -g omniroute, il server parte su localhost:20128. 2. Punta il tuo strumento a http://localhost:20128/v1 — qualunque strumento compatibile con OpenAI (Claude Code, Cursor, Cline). 3. Risponde — usa il modello auto per una risposta immediata, senza API key, registrazione o configurazione. I provider gratuiti senza chiave OpenCode Free e Felo sono già collegati alla combo auto, quindi una nuova installazione risponde immediatamente."/>
+<img src="../../diagrams/works-zero-config.svg" width="100%" alt="Funziona subito dopo l'installazione — configurazione zero. Tre passaggi: 1. Installa — npm i -g omniroute, il server parte su localhost:20128. 2. Punta il tuo strumento a http://localhost:20128/v1 — qualunque strumento compatibile con OpenAI (Claude Code, Cursor, Cline). 3. Risponde — usa il modello auto per una risposta immediata, senza API key, registrazione o configurazione. OpenCode Free è già collegato alla combo auto, quindi una nuova installazione risponde immediatamente."/>
 
 ```bash
 # Fresh install, zero credentials — `auto` already works:
@@ -206,7 +208,7 @@ curl http://localhost:20128/v1/chat/completions \
   -d '{"model":"auto","messages":[{"role":"user","content":"Hello!"}]}'
 ```
 
-<sub>Preferisci uno specifico backend gratuito? Chiamalo direttamente, ad esempio `oc/…` (OpenCode Free) o `felo/…` (Felo). Poi passa a `auto` e lascia che sia OmniRoute a scegliere.</sub>
+<sub>Preferisci uno specifico backend gratuito? Chiama direttamente `oc/…` (OpenCode Free). Poi passa a `auto` e lascia che sia OmniRoute a scegliere.</sub>
 
 <sub>📦 Script di avvio rapido pronti da copiare per **Python, Node.js, PHP e cURL** → [`examples/quickstart/`](../../../examples/quickstart/)</sub>
 
@@ -215,6 +217,7 @@ curl http://localhost:20128/v1/chat/completions \
 <div align="center">
 
 <a id="-the-promise"></a>
+
 # 💥 La promessa
 
 </div>
@@ -227,6 +230,7 @@ curl http://localhost:20128/v1/chat/completions \
 <div align="center">
 
 <a id="-why-omniroute"></a>
+
 # 🤔 Perché OmniRoute?
 
 </div>
@@ -323,6 +327,7 @@ curl http://localhost:20128/v1/chat/completions \
 <div align="center">
 
 <a id="-combos--the-flagship"></a>
+
 ## 🎯 Combo — La funzionalità di punta
 
 </div>
@@ -393,6 +398,7 @@ Tutte e **19** le strategie — combinabili liberamente per ogni passaggio della
 <div align="center">
 
 <a id="-what-sets-omniroute-apart"></a>
+
 ## 🏆 Cosa distingue OmniRoute
 
 </div>
@@ -404,6 +410,7 @@ Tutte e **19** le strategie — combinabili liberamente per ogni passaggio della
 <br/>
 
 <a id="-support-omniroute"></a>
+
 ## 💚 Supporta OmniRoute
 
 OmniRoute è distribuito con licenza MIT e mantenuto apertamente. Se ti fa risparmiare tempo o denaro, ecco come aiutarlo a restare indipendente — scegli ciò che preferisci. Le sponsorizzazioni non influenzano mai la priorità del routing: acquistano visibilità, non posizionamento.
@@ -465,6 +472,7 @@ Radar è opt-in e usa soltanto richieste GET. Il client OmniRoute non carica pro
 <div align="center">
 
 <a id="-whats-new"></a>
+
 ## ✨ Novità
 
 </div>
@@ -497,6 +505,7 @@ Radar è opt-in e usa soltanto richieste GET. Il client OmniRoute non carica pro
 <div align="center">
 
 <a id="-compatible-clis--coding-agents"></a>
+
 ## 🤖 CLI e agenti di coding compatibili
 
 > Una sola configurazione — `http://localhost:20128/v1` — e **qualsiasi** IDE o CLI AI può usare modelli gratuiti e a basso costo.
@@ -915,6 +924,7 @@ Usali solo con client che non possono aggiungere `Authorization: Bearer ...`. L'
 <br/>
 
 <a id="-more-install-methods--docker-source-pnpm-arch"></a>
+
 ## 📦 Altri metodi di installazione — Docker, sorgente, pnpm, Arch
 
 **🐳 Docker**
@@ -926,11 +936,11 @@ docker run -d --name omniroute --restart unless-stopped --stop-timeout 40 \
 
 `:latest` segue la versione SemVer stabile **pubblicata** più alta. Non segue il branch git `main`. Per GitOps, fissa `:X.Y.Z`. Vedi [Canali di release Docker](../../guides/DOCKER_GUIDE.md#release-channels). L'immagine imposta **`OMNIROUTE_MEMORY_MB=1024`**. È sufficiente per la dashboard e una chat leggera. I **coding agent** (`POST /v1/responses` da Claude Code, Codex, Grok, …) richiedono un heap V8 molto più grande, altrimenti il processo va in `FATAL ERROR` a ~12 GiB con due contesti lunghi sovrapposti. Dimensiona il container oltre l'heap (i buffer nativi si trovano fuori da V8):
 
-| Carico di lavoro                    | Heap (`-e OMNIROUTE_MEMORY_MB`) | Container (`--memory`) |
-| ----------------------------------- | ------------------------------- | ---------------------- |
-| Dashboard / chat leggera            | `1024` (predefinito immagine)   | ≥2 g                   |
-| Un coding agent                     | `8192`                          | ≥10 g                  |
-| Due `/v1/responses` lunghe simultanee | `10240`–`12288`               | ≥12–16 g               |
+| Carico di lavoro                      | Heap (`-e OMNIROUTE_MEMORY_MB`) | Container (`--memory`) |
+| ------------------------------------- | ------------------------------- | ---------------------- |
+| Dashboard / chat leggera              | `1024` (predefinito immagine)   | ≥2 g                   |
+| Un coding agent                       | `8192`                          | ≥10 g                  |
+| Due `/v1/responses` lunghe simultanee | `10240`–`12288`                 | ≥12–16 g               |
 
 ```bash
 docker run -d --name omniroute --restart unless-stopped --stop-timeout 40 \
@@ -949,6 +959,7 @@ Tabella completa: [Guida Docker — RAM di runtime](../../guides/DOCKER_GUIDE.md
 **🥟 Bun**
 
 Sono supportati `bun install` standard e l'installazione globale (`bun install -g omniroute`) tramite rilevamento del runtime Bun:
+
 - **`bun:sqlite` integrato**: OmniRoute usa il driver integrato `bun:sqlite` quando gira con Bun, con fallback a `better-sqlite3` su Node.js o a `sql.js`.
 - **Selezione automatica del bundler Webpack**: sviluppo (`bun run dev`) e build di produzione (`bun run build`) rilevano automaticamente Bun e disabilitano Turbopack a favore di Webpack per evitare incompatibilità dei binding V8 nativi.
 - **Dockerfile Bun dedicato**: `Dockerfile.bun` multi-stage per deployment di produzione nativi Bun (`docker build -f Dockerfile.bun -t omniroute:bun .`).
@@ -1109,19 +1120,19 @@ Metriche di validazione: 1002 video monitorati · 7,069,190 visualizzazioni note
 
 > Tutto in un unico posto — segui il maintainer, parla con la community oppure apri una issue.
 
-| Canale                                     | Dove / come                                                                                                                |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| 💼 **LinkedIn** — segui il maintainer      | [linkedin.com/in/diegosouzapw](https://www.linkedin.com/in/diegosouzapw/)                                                  |
-| 🐙 **GitHub** — segui release e suggerimenti | [@diegosouzapw](https://github.com/diegosouzapw)                                                                         |
-| 💬 **Discord**                             | [discord.gg/U47eFqAXCn](https://discord.gg/U47eFqAXCn)                                                                     |
-| ✈️ **Telegram**                            | [t.me/omnirouteOficial](https://t.me/omnirouteOficial)                                                                     |
-| 🟢 **WhatsApp — 🌍 Global**                | [entra nel gruppo](https://chat.whatsapp.com/JI7cDQ1GyaiDHhVBpLxf8b?mode=gi_t)                                            |
-| 🟢 **WhatsApp — 🇧🇷 Brasil**                | [entra nel gruppo](https://chat.whatsapp.com/LTSpdFhXTxjH4R6CCNiKWz)                                                     |
-| 🌍 **Sito web**                            | [omniroute.online](https://omniroute.online)                                                                               |
-| 📦 **Codice sorgente**                     | [github.com/diegosouzapw/OmniRoute](https://github.com/diegosouzapw/OmniRoute)                                             |
-| 🐛 **Segnala un bug**                      | [apri una issue](https://github.com/diegosouzapw/OmniRoute/issues) — allega l'output di `npm run system-info`              |
-| 🤝 **Contribuisci**                        | [CONTRIBUTING.md](../../../CONTRIBUTING.md) · [Modello di branching e release](../../ops/BRANCHING_MODEL.md) · scegli una `good first issue` |
-| 💚 **Sostieni il progetto**                | [Modi per sostenere ↑](#-support-omniroute) · [GitHub Sponsors](https://github.com/sponsors/diegosouzapw)                   |
+| Canale                                       | Dove / come                                                                                                                                  |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| 💼 **LinkedIn** — segui il maintainer        | [linkedin.com/in/diegosouzapw](https://www.linkedin.com/in/diegosouzapw/)                                                                    |
+| 🐙 **GitHub** — segui release e suggerimenti | [@diegosouzapw](https://github.com/diegosouzapw)                                                                                             |
+| 💬 **Discord**                               | [discord.gg/U47eFqAXCn](https://discord.gg/U47eFqAXCn)                                                                                       |
+| ✈️ **Telegram**                              | [t.me/omnirouteOficial](https://t.me/omnirouteOficial)                                                                                       |
+| 🟢 **WhatsApp — 🌍 Global**                  | [entra nel gruppo](https://chat.whatsapp.com/JI7cDQ1GyaiDHhVBpLxf8b?mode=gi_t)                                                               |
+| 🟢 **WhatsApp — 🇧🇷 Brasil**                  | [entra nel gruppo](https://chat.whatsapp.com/LTSpdFhXTxjH4R6CCNiKWz)                                                                         |
+| 🌍 **Sito web**                              | [omniroute.online](https://omniroute.online)                                                                                                 |
+| 📦 **Codice sorgente**                       | [github.com/diegosouzapw/OmniRoute](https://github.com/diegosouzapw/OmniRoute)                                                               |
+| 🐛 **Segnala un bug**                        | [apri una issue](https://github.com/diegosouzapw/OmniRoute/issues) — allega l'output di `npm run system-info`                                |
+| 🤝 **Contribuisci**                          | [CONTRIBUTING.md](../../../CONTRIBUTING.md) · [Modello di branching e release](../../ops/BRANCHING_MODEL.md) · scegli una `good first issue` |
+| 💚 **Sostieni il progetto**                  | [Modi per sostenere ↑](#-support-omniroute) · [GitHub Sponsors](https://github.com/sponsors/diegosouzapw)                                    |
 
 </div>
 
@@ -1131,6 +1142,7 @@ Metriche di validazione: 1002 video monitorati · 7,069,190 visualizzazioni note
 <div align="center">
 
 <a id="-tech-stack"></a>
+
 ## 🛠️ Stack tecnologico
 
 </div>
@@ -1161,6 +1173,7 @@ Metriche di validazione: 1002 video monitorati · 7,069,190 visualizzazioni note
 <br/>
 
 <a id="-documentation"></a>
+
 ## 📖 Documentazione
 
 </div>
@@ -1338,6 +1351,7 @@ Metriche di validazione: 1002 video monitorati · 7,069,190 visualizzazioni note
 <br/>
 
 <a id="-sponsors"></a>
+
 ## 💖 Sponsor
 
 <div align="center">

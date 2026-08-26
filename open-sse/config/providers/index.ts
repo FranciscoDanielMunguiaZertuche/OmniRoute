@@ -148,7 +148,6 @@ import { longcatProvider } from "./registry/longcat/index.ts";
 import { vertex_partnerProvider } from "./registry/vertex/partner/index.ts";
 import { vertexProvider } from "./registry/vertex/index.ts";
 import { duckduckgo_webProvider } from "./registry/duckduckgo-web/index.ts";
-import { felo_webProvider } from "./registry/felo-web/index.ts";
 import { xaiProvider, xai_oauthProvider } from "./registry/xai/index.ts";
 import { morphProvider } from "./registry/morph/index.ts";
 import { siliconflowProvider } from "./registry/siliconflow/index.ts";
@@ -416,7 +415,6 @@ export const REGISTRY: Record<string, RegistryEntry> = {
   "vertex-partner": vertex_partnerProvider,
   vertex: vertexProvider,
   "duckduckgo-web": duckduckgo_webProvider,
-  "felo-web": felo_webProvider,
   xai: xaiProvider,
   "xai-oauth": xai_oauthProvider,
   morph: morphProvider,

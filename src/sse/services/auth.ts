@@ -28,6 +28,7 @@ import { getSettings } from "@/lib/db/settings";
 import { buildJinaEnvCredentials } from "@/lib/providers/jina";
 import { buildGeminiEnvCredentials } from "@/lib/providers/gemini";
 import { toNumber } from "@/shared/utils/numeric";
+import { isRuntimeRetiredProviderId } from "@/shared/constants/providerRetirement";
 import {
   createLazyConnectionView,
   toProviderConnection,
@@ -844,7 +845,7 @@ async function maybeSyntheticNoAuthFallback(
   // #9057: a key pinned to specific connections via allowedConnections must
   // NOT receive the synthetic "noauth" connection — the synthetic id is
   // never in an explicit allowlist, so returning it would let a restricted
-  // key reach free providers (felo-chat, etc.) that it should not access.
+  // key reach free providers (OpenCode Free, etc.) that it should not access.
   if (Array.isArray(allowedConnections) && allowedConnections.length > 0) return null;
   if (excludedConnectionIds.has(SYNTHETIC_NOAUTH_CONNECTION_ID)) return null;
   if (
@@ -1231,6 +1232,12 @@ export async function getProviderCredentials(
   requestedModel: string | null = null,
   options: CredentialSelectionOptions = {}
 ) {
+  if (isRuntimeRetiredProviderId(provider)) {
+    invalidateManagedLease(options, "CONNECTION_INELIGIBLE");
+    log.warn("AUTH", "Retired provider rejected before credential selection");
+    return null;
+  }
+
   const selectionLock = options._leaseRetryWithLockHeld
     ? null
     : createSelectionLock(getSelectionMutexKey(provider, options));

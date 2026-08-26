@@ -1,16 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 566" role="img" aria-label="OmniRoute free-tier dashboard preview: about 1.51 billion documented recurring tokens per month and about 2.13 billion in the first month. The audited catalog has 40 recurring pool keys and 455 entries, 448 active and 7 discontinued; the chart represents the 20 pools with a published positive monthly token budget. One-time signup credits total about 626 million and include a 10 million LongCat grant that requires KYC. Uncapped providers remain subject to rate, concurrency, account, regional, and policy limits." font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 566" role="img" aria-label="OmniRoute free-tier dashboard preview: about 1.51 billion documented recurring tokens per month and about 2.13 billion in the first month. The audited catalog has 39 recurring pool keys and 451 entries, 444 active and 7 discontinued; the chart represents the 20 pools with a published positive monthly token budget. One-time signup credits total about 626 million and include a 10 million LongCat grant that requires KYC. Uncapped providers remain subject to rate, concurrency, account, regional, and policy limits." font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
 <desc>Static dashboard preview of recurring token pools, first-month signup grants, and uncapped but rate-limited free-access providers.</desc>
 <rect width="900" height="566" rx="16" fill="#0d1117"/>
 <rect x="16" y="16" width="868" height="550" rx="13" fill="#161b22" stroke="#30363d"/>
 <text x="868" y="558" fill="#484f58" font-size="10.5" text-anchor="end">OmniRoute · /dashboard/free-tiers · preview mockup</text>
 <text x="32" y="50" fill="#e6edf3" font-size="18" font-weight="700">Monthly free-token budget</text>
-<text x="868" y="50" fill="#7d8590" font-size="13" text-anchor="end">40 recurring pools · 455 catalog entries · one endpoint</text>
+<text x="868" y="50" fill="#7d8590" font-size="13" text-anchor="end">39 recurring pools · 451 catalog entries · one endpoint</text>
 <text x="32" y="84" fill="#7d8590" font-size="11.5">Steady / month</text>
 <text x="32" y="114" fill="#e6edf3" font-size="27" font-weight="800">~1.51B</text>
 <text x="330" y="84" fill="#7d8590" font-size="11.5">First month (+ signup credits)</text>
 <text x="330" y="114" fill="#3fb950" font-size="27" font-weight="800">~2.13B</text>
 <text x="700" y="84" fill="#7d8590" font-size="11.5">ToS-flagged (you decide)</text>
-<text x="700" y="114" fill="#d29922" font-size="27" font-weight="800">15 providers</text>
+<text x="700" y="114" fill="#d29922" font-size="27" font-weight="800">14 providers</text>
 <clipPath id="bar"><rect x="32" y="132" width="836" height="16" rx="8"/></clipPath>
 <g clip-path="url(#bar)"><rect x="32" y="132" width="836" height="16" fill="#21262d"/>
 <rect x="32.0" y="132" width="510.4" height="16" fill="#6c5ce7"/>
@@ -34,7 +34,7 @@
 <rect x="855.7" y="132" width="5.7" height="16" fill="#fdcb6e"/>
 <rect x="862.3" y="132" width="5.7" height="16" fill="#e84393"/>
 </g>
-<text x="32" y="172" fill="#7d8590" font-size="12">Each segment = one of 20 quantified recurring pools · 40 pools / 455 entries in the audited catalog.</text>
+<text x="32" y="172" fill="#7d8590" font-size="12">Each segment = one of 20 quantified recurring pools · 39 pools / 451 entries in the audited catalog.</text>
 <circle cx="37" cy="196" r="5" fill="#6c5ce7"/>
 <text x="48" y="200" fill="#c9d1d9" font-size="12.5">Mistral <tspan fill="#7d8590">1.00B</tspan></text>
 <circle cx="250" cy="196" r="5" fill="#00b894"/>
