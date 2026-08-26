@@ -23,7 +23,7 @@
   "tests/unit/provider-page-helpers-3501.test.ts": "v3.8.47 #6862: feat GPT-5.6 family — 2 assert.ok(values.includes(...)) substituídos por 1 assert.deepEqual(values, [lista completa ordenada de effort tiers]) — asserção estritamente MAIS FORTE, net 69→68. Verificado legítimo. Prune após v3.8.47 mergear para main.",
   "tests/unit/vscode-token-routes.test.ts": "v3.8.47 #6862: feat GPT-5.6 family — a matriz de modelos do VS Code token route migrou de GPT-5.4/5.5 para a família 5.6 (tiers consolidados, context 200k→500k, novos slugs sol); os asserts da matriz aposentada foram substituídos pelos da nova (net 247→200). Asserts migrados ao novo catálogo, não enfraquecidos. Verificado legítimo. Prune após v3.8.47 mergear para main.",
   "tests/unit/providers-page-utils.test.ts": "v3.8.47 #6675: remoção dos providers obsoletos glhf/kluster/cablyai/inclusionai — os 2 asserts que citavam providers removidos do catálogo foram removidos junto (net 276→274). Superfície aposentada, não mascaramento. Verificado legítimo. Prune após v3.8.47 mergear para main.",
-  "tests/unit/provider-alias-uniqueness.test.ts": "v3.8.50 Qwen Web provenance HOLD: os 2 asserts positivos de alias para qwen-web foram removidos porque a integração e seu registro foram aposentados; os asserts de unicidade e das variantes web ainda suportadas permanecem, e tests/unit/qwen-web-retirement.test.ts prova que qwen-web/qw não voltam ao catálogo ou ao dispatch. Superfície aposentada, não enfraquecimento.",
+  "tests/unit/provider-alias-uniqueness.test.ts": "v3.8.50 #11713 Qwen Web provenance HOLD: os 2 asserts positivos de alias para qwen-web foram removidos porque a integração e seu registro foram aposentados; os asserts de unicidade e das variantes web ainda suportadas permanecem, e tests/unit/qwen-web-retirement.test.ts prova que qwen-web/qw não voltam ao catálogo ou ao dispatch. Superfície aposentada, não enfraquecimento.",
   "_deletedWithReplacement": {
     "_comment": "Deleções de arquivo de teste com SUBSTITUTO verificado (o gate exige que o replacement exista no HEAD e seja arquivo de teste). Uso restrito ao caso 'reescrito em outro path sem rename detectável pelo -M do git'. Cada entrada precisa de reason com PR ref e passa por revisão humana no release PR. Prune após o release mergear para main.",
     "open-sse/services/combo/__tests__/targetExhaustion.test.ts": {
@@ -86,27 +86,27 @@
     },
     "tests/unit/executor-qwen-web.test.ts": {
       "replacement": "tests/unit/qwen-web-retirement.test.ts",
-      "reason": "v3.8.50 Qwen Web provenance HOLD: the specialized executor and its positive request/stream contract were retired. The replacement proves the exact qwen-web/qw identities have no registry/executor/admission surface and fail closed with 410 instead of falling through to DefaultExecutor; proxy-bypass coverage lives in tests/unit/chatcore-executor-proxy.test.ts. Feature retirement, not masking."
+      "reason": "v3.8.50 #11713 Qwen Web provenance HOLD: the specialized executor and its positive request/stream contract were retired. The replacement proves the exact qwen-web/qw identities have no registry/executor/admission surface and fail closed with 410 instead of falling through to DefaultExecutor; proxy-bypass coverage lives in tests/unit/chatcore-executor-proxy.test.ts. Feature retirement, not masking."
     },
     "tests/unit/provider-models-qwen-web-redirect-6267.test.ts": {
       "replacement": "tests/unit/qwen-web-retirement.test.ts",
-      "reason": "v3.8.50 Qwen Web provenance HOLD: the chat.qwen.ai discovery endpoint was removed with the retired provider. The replacement asserts PROVIDER_MODELS_CONFIG and registry admission remain absent while official qwen-cloud providers remain available. Feature retirement, not masking."
+      "reason": "v3.8.50 #11713 Qwen Web provenance HOLD: the chat.qwen.ai discovery endpoint was removed with the retired provider. The replacement asserts PROVIDER_MODELS_CONFIG and registry admission remain absent while official qwen-cloud providers remain available. Feature retirement, not masking."
     },
     "tests/unit/provider-validation-qwen-web-5855.test.ts": {
       "replacement": "tests/unit/qwen-web-retirement.test.ts",
-      "reason": "v3.8.50 Qwen Web provenance HOLD: provider-specific validation was removed together with the integration. The replacement locks the new contract that qwen-web/qw cannot be admitted or dispatched and that similarly named legitimate Qwen providers are not tombstoned. Feature retirement, not masking."
+      "reason": "v3.8.50 #11713 Qwen Web provenance HOLD: provider-specific validation was removed together with the integration. The replacement locks the new contract that qwen-web/qw cannot be admitted or dispatched and that similarly named legitimate Qwen providers are not tombstoned. Feature retirement, not masking."
     },
     "tests/unit/qwen-web-content-array-serialization.test.ts": {
       "replacement": "tests/unit/qwen-web-retirement.test.ts",
-      "reason": "v3.8.50 Qwen Web provenance HOLD: content-array serialization belonged exclusively to the removed executor. The replacement proves the executor implementation file does not ship and exact retired IDs fail closed before any generic serialization/dispatch path. Feature retirement, not masking."
+      "reason": "v3.8.50 #11713 Qwen Web provenance HOLD: content-array serialization belonged exclusively to the removed executor. The replacement proves the executor implementation file does not ship and exact retired IDs fail closed before any generic serialization/dispatch path. Feature retirement, not masking."
     },
     "tests/unit/qwen-web-cookie-validation-3958.test.ts": {
       "replacement": "tests/unit/qwen-web-retirement.test.ts",
-      "reason": "v3.8.50 Qwen Web provenance HOLD: cookie validation and web-session credential admission were removed with the provider. The replacement asserts there is no web-session requirement, token extraction config, provider metadata or runtime dispatch for qwen-web/qw. Feature retirement, not masking."
+      "reason": "v3.8.50 #11713 Qwen Web provenance HOLD: cookie validation and web-session credential admission were removed with the provider. The replacement asserts there is no web-session requirement, token extraction config, provider metadata or runtime dispatch for qwen-web/qw. Feature retirement, not masking."
     },
     "tests/unit/qwen-web-models-discovery-3931.test.ts": {
       "replacement": "tests/unit/provider-models-discovery-split.test.ts",
-      "reason": "v3.8.50 Qwen Web provenance HOLD: the retired chat.qwen.ai discovery integration no longer has a positive model-discovery contract. The replacement asserts qwen-web is absent from PROVIDER_MODELS_CONFIG while the remaining discovery providers retain their mappings; tests/unit/qwen-web-retirement.test.ts supplies the end-to-end retirement guard. Feature retirement, not masking."
+      "reason": "v3.8.50 #11713 Qwen Web provenance HOLD: the retired chat.qwen.ai discovery integration no longer has a positive model-discovery contract. The replacement asserts qwen-web is absent from PROVIDER_MODELS_CONFIG while the remaining discovery providers retain their mappings; tests/unit/qwen-web-retirement.test.ts supplies the end-to-end retirement guard. Feature retirement, not masking."
     }
   },
   "tests/unit/catalog-updates-v3x.test.ts": "v3.8.45 #6248: fix(providers) remove deprecated MiMo V2 entries — os 5 asserts removidos pinavam specs de modelos mimo-v2-* que deixaram de existir no catálogo (54→49). Asserts seguem a remoção dos modelos, não enfraquecimento. Verificado legítimo. Prune após v3.8.45 mergear para main.",
