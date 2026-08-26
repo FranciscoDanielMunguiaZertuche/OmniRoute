@@ -47,6 +47,10 @@ test("every token-kind web session with a real token-aware validator uses the AP
   }
 });
 
+test("retired Microsoft Designer cannot regain the positive web-session test path", () => {
+  assert.equal(shouldUseApiKeyConnectionTest("cookie", "microsoft-designer-web"), false);
+});
+
 test("other auth types are not broadened", () => {
   assert.equal(shouldUseApiKeyConnectionTest("oauth", "deepseek-web"), false);
 
