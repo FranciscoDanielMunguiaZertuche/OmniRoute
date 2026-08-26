@@ -83,11 +83,11 @@
     },
     "tests/unit/microsoft-designer-web-6672.test.ts": {
       "replacement": "tests/unit/microsoft-designer-web-retirement.test.ts",
-      "reason": "v3.8.50 this PR: the Microsoft Designer Web runtime, handler, executor, catalogs and public credential were retired. The replacement pins the fail-closed runtime contract, exact-ID matching, source removal and preservation of unrelated image providers. Feature removal, not masking; replace this PR marker with the final PR number after opening."
+      "reason": "v3.8.50 #11720: the Microsoft Designer Web runtime, handler, executor, catalogs and public credential were retired. The replacement pins the fail-closed runtime contract, exact-ID matching, source removal and preservation of unrelated image providers. Feature removal, not masking."
     },
     "tests/unit/designer-web-empty-response-502.test.ts": {
       "replacement": "tests/unit/microsoft-designer-web-retirement.test.ts",
-      "reason": "v3.8.50 this PR: the deleted test exercised polling behavior in the removed Designer handler. The replacement verifies that the handler stays absent and both retired IDs fail closed while OpenAI DALL-E and other media providers remain available. Feature removal, not masking; replace this PR marker with the final PR number after opening."
+      "reason": "v3.8.50 #11720: the deleted test exercised polling behavior in the removed Designer handler. The replacement verifies that the handler stays absent and both retired IDs fail closed while OpenAI DALL-E and other media providers remain available. Feature removal, not masking."
     }
   },
   "tests/unit/catalog-updates-v3x.test.ts": "v3.8.45 #6248: fix(providers) remove deprecated MiMo V2 entries — os 5 asserts removidos pinavam specs de modelos mimo-v2-* que deixaram de existir no catálogo (54→49). Asserts seguem a remoção dos modelos, não enfraquecimento. Verificado legítimo. Prune após v3.8.45 mergear para main.",
