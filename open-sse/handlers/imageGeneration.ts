@@ -50,7 +50,6 @@ import {
   extractMarkdownImageUrls,
   CHATGPT_WEB_IMAGE_ID_RE,
 } from "./imageGeneration/providers/chatgptWeb.ts";
-import { handleGeminiWebImageGeneration } from "./imageGeneration/providers/geminiWeb.ts";
 import { handleNvidiaNimImageGeneration } from "./imageGeneration/providers/nvidiaNim.ts";
 import { handleSegmindImageGeneration } from "./imageGeneration/providers/segmind.ts";
 import { handleDesignerWebImageGeneration } from "./imageGeneration/providers/designerWeb.ts";
@@ -523,19 +522,6 @@ export async function handleImageGeneration({
 
   if (providerConfig.format === "chatgpt-web") {
     return handleChatGptWebImageGeneration({
-      model,
-      provider,
-      body,
-      credentials,
-      log,
-      signal,
-      clientHeaders,
-    });
-  }
-
-  // #10466: Gemini Web session image generation (Nano Banana)
-  if (providerConfig.format === "gemini-web") {
-    return handleGeminiWebImageGeneration({
       model,
       provider,
       body,
@@ -2851,7 +2837,7 @@ export function saveImageErrorResult({
   error,
   requestBody = null,
   path = "/v1/images/generations",
-  // #10494: opt-in signal for executeImageWithCredentialFallback — set by a
+  // #8307: opt-in signal for executeImageWithCredentialFallback — set by a
   // provider handler when the failure is account/session-specific (expired
   // or blocked credentials) rather than a generic request/provider error, so
   // the retry loop tries the next eligible account even when the upstream
