@@ -27,7 +27,7 @@
     "_comment": "Deleções de arquivo de teste com SUBSTITUTO verificado (o gate exige que o replacement exista no HEAD e seja arquivo de teste). Uso restrito ao caso 'reescrito em outro path sem rename detectável pelo -M do git'. Cada entrada precisa de reason com PR ref e passa por revisão humana no release PR. Prune após o release mergear para main.",
     "tests/unit/felo-web-executor.test.ts": {
       "replacement": "tests/unit/felo-web-retirement.test.ts",
-      "reason": "v3.8.50 draft PR pending: the Felo Web integration remains on a GPL provenance/licensing HOLD, so its executor and registry no longer ship. The replacement proves runtime/catalog/source absence; generic no-auth and strict-zero-cost behavior remains covered with independent fixtures. Bind this reason to the draft PR number immediately after creation."
+      "reason": "v3.8.50 #11698: the Felo Web integration remains on a GPL provenance/licensing HOLD, so its executor and registry no longer ship. The replacement proves runtime/catalog/source absence; generic no-auth and strict-zero-cost behavior remains covered with independent fixtures."
     },
     "open-sse/services/combo/__tests__/targetExhaustion.test.ts": {
       "replacement": "tests/unit/combo/combo-target-exhaustion.test.ts",

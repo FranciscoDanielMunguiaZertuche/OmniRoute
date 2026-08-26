@@ -1,1 +1,0 @@
-- Retire the Felo Web provider while its GPL-derived provenance remains on licensing HOLD, fail closed for stale runtime and database references, and preserve existing connection and lease history for auditability.
