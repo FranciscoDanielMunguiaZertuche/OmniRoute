@@ -27,11 +27,11 @@
     "_comment": "Deleções de arquivo de teste com SUBSTITUTO verificado (o gate exige que o replacement exista no HEAD e seja arquivo de teste). Uso restrito ao caso 'reescrito em outro path sem rename detectável pelo -M do git'. Cada entrada precisa de reason com PR ref e passa por revisão humana no release PR. Prune após o release mergear para main.",
     "tests/unit/gemini-web-image-account-fallback.test.ts": {
       "replacement": "tests/unit/gemini-web-image-retirement.test.ts",
-      "reason": "v3.8.50 pending PR: a capacidade Gemini Web Images foi aposentada em HOLD de procedencia/licenca, sem aposentar Gemini Web chat/auth/tools. O teste positivo de fallback da integracao removida foi substituido pelo guard negativo no catalogo/handler e pelo controle que preserva o executor/registry de chat e provedores legitimos de Nano Banana. Superficie extinta, nao mascaramento; atualizar com o numero da PR apos abri-la."
+      "reason": "v3.8.50 #11708: a capacidade Gemini Web Images foi aposentada em HOLD de procedencia/licenca, sem aposentar Gemini Web chat/auth/tools. O teste positivo de fallback da integracao removida foi substituido pelo guard negativo no catalogo/handler e pelo controle que preserva o executor/registry de chat e provedores legitimos de Nano Banana. Superficie extinta, nao mascaramento."
     },
     "tests/unit/gemini-web-image-generation-10466.test.ts": {
       "replacement": "tests/unit/gemini-web-image-retirement.test.ts",
-      "reason": "v3.8.50 pending PR: parser, image-mode, handler e modelo gemini-web/nano-banana-web foram aposentados em HOLD de procedencia/licenca. O replacement prova a ausencia no catalogo e request path, a remocao dos artefatos dedicados, a neutralizacao da antiga extensao image-mode e a preservacao de Gemini Web chat e imagens Gemini/Nano Banana em provedores legitimos. Superficie extinta, nao mascaramento; atualizar com o numero da PR apos abri-la."
+      "reason": "v3.8.50 #11708: parser, image-mode, handler e modelo gemini-web/nano-banana-web foram aposentados em HOLD de procedencia/licenca. O replacement prova a ausencia no catalogo e request path, a remocao dos artefatos dedicados, a neutralizacao da antiga extensao image-mode e a preservacao de Gemini Web chat e imagens Gemini/Nano Banana em provedores legitimos. Superficie extinta, nao mascaramento."
     },
     "open-sse/services/combo/__tests__/targetExhaustion.test.ts": {
       "replacement": "tests/unit/combo/combo-target-exhaustion.test.ts",
