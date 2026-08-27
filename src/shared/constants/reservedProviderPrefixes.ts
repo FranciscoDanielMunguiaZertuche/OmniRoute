@@ -11,14 +11,23 @@
 //      provider (tokenrouter bug: "No active credentials for provider:
 //      tokenrouter" despite a fully configured compatible node).
 //
-// Semantics (mirror the original inline runtime guard exactly):
-//   - REGISTRY entry ids + aliases only. Manual alias ids outside REGISTRY
+// Semantics:
+//   - REGISTRY entry ids + aliases plus the permanently retired common
+//     ChatGPT Web ids. Manual alias ids outside REGISTRY
 //     (xiaomi/llamacpp/aq) do NOT intercept nodes at runtime and are therefore
 //     deliberately NOT reserved — including them would cause false-positive
 //     rejections.
-//   - Case-sensitive: mixed-case input like "TokenRouter" does not collide with
-//     the runtime lookup (`Set.has` is exact-match), so it stays allowed.
+//   - Registry ids/aliases stay case-sensitive: mixed-case input like
+//     "TokenRouter" does not collide with the runtime lookup (`Set.has` is
+//     exact-match), so it stays allowed. The retired ids are the deliberate
+//     exception and are matched trim/case-insensitively because every request
+//     using them fails closed with 410.
 import { REGISTRY } from "@omniroute/open-sse/config/providerRegistry.ts";
+
+import {
+  isCommonChatGptWebRetiredProviderId,
+  RETIRED_COMMON_CHATGPT_WEB_PROVIDER_IDS,
+} from "@/shared/constants/chatgptWebRetirement";
 
 let _reserved: Set<string> | null = null;
 
@@ -29,13 +38,14 @@ function buildReservedProviderPrefixes(): Set<string> {
     if (entry?.id) reserved.add(entry.id);
     if (entry?.alias) reserved.add(entry.alias);
   }
+  for (const retiredId of RETIRED_COMMON_CHATGPT_WEB_PROVIDER_IDS) reserved.add(retiredId);
   _reserved = reserved;
   return reserved;
 }
 
 /**
- * All reserved provider prefixes (REGISTRY ids + aliases). Built lazily so the
- * registry is only walked once per process.
+ * All reserved provider prefixes (REGISTRY ids + aliases and canonical retired
+ * ids). Built lazily so the registry is only walked once per process.
  */
 export function getReservedProviderPrefixes(): ReadonlySet<string> {
   return buildReservedProviderPrefixes();
@@ -58,7 +68,10 @@ export const RESERVED_PROVIDER_PREFIXES: ReadonlySet<string> = getReservedProvid
  * reserved (mirrors the runtime guard's typeof check).
  */
 export function isReservedProviderPrefix(value: unknown): boolean {
-  return typeof value === "string" && buildReservedProviderPrefixes().has(value);
+  return (
+    typeof value === "string" &&
+    (isCommonChatGptWebRetiredProviderId(value) || buildReservedProviderPrefixes().has(value))
+  );
 }
 
 /**
@@ -66,5 +79,5 @@ export function isReservedProviderPrefix(value: unknown): boolean {
  * prefix and tells the operator what to pick instead.
  */
 export function reservedProviderPrefixMessage(value: string): string {
-  return `"${value}" is a reserved provider prefix — choose a different prefix (reserved ids/aliases cannot be used for custom nodes because requests like <prefix>/model would always route to the built-in provider)`;
+  return `"${value}" is a reserved provider prefix — choose a different prefix (reserved ids/aliases cannot be used for custom nodes because requests like <prefix>/model route to a built-in provider or fail closed when retired)`;
 }

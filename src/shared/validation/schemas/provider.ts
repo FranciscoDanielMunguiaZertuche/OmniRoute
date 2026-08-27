@@ -48,7 +48,7 @@ const providerNodeIconUrlSchema = z
   .optional();
 
 // #6715: the `apiKey` field is reused as the raw `Cookie:` header value for
-// cookie-based web providers (Gemini Business, Copilot M365, ChatGPT Web,
+// cookie-based web providers (Gemini Business, Copilot M365, ChatGPT Web (Codex),
 // Claude Web, …). Real multi-cookie session headers (many `__Secure-*` entries,
 // large session tokens) legitimately exceed the old 10,000-char cap, so saving
 // a cookie that the provider's own `validate` check (validateProviderApiKeySchema,

@@ -1,4 +1,5 @@
 import { SEARCH_PROVIDERS } from "../config/searchRegistry.ts";
+import { assertCommonChatGptWebProviderAvailable } from "@/shared/constants/chatgptWebRetirement";
 import { registerExecutor, getRegisteredExecutor, hasRegisteredExecutor } from "./registry.ts";
 import type { BaseExecutor } from "./base.ts";
 import { AntigravityExecutor } from "./antigravity.ts";
@@ -26,7 +27,6 @@ import { GrokWebExecutor } from "./grok-web.ts";
 import { GeminiWebExecutor } from "./gemini-web.ts";
 import { TencentAIStudioWebExecutor } from "./tencent-aistudio-web.ts";
 import { GeminiBusinessExecutor } from "./gemini-business.ts";
-import { ChatGptWebExecutor } from "./chatgpt-web.ts";
 import { ChatGptWebCodexExecutor } from "./chatgpt-web-codex.ts";
 import { BlackboxWebExecutor } from "./blackbox-web.ts";
 import { MuseSparkWebExecutor } from "./muse-spark-web.ts";
@@ -142,8 +142,6 @@ const executors = {
   gweb: new GeminiWebExecutor(), // Alias
   "gemini-business": new GeminiBusinessExecutor(),
   gembiz: new GeminiBusinessExecutor(), // Alias
-  "chatgpt-web": new ChatGptWebExecutor(),
-  "cgpt-web": new ChatGptWebExecutor(), // Alias
   "blackbox-web": new BlackboxWebExecutor(),
   "bb-web": new BlackboxWebExecutor(), // Alias
   "muse-spark-web": new MuseSparkWebExecutor(),
@@ -268,6 +266,7 @@ const CHAT_UNSUPPORTED_CLOUD_AGENT_PROVIDERS = new Set(["jules"]);
 const CHAT_UNSUPPORTED_SEARCH_PROVIDERS = new Set(Object.keys(SEARCH_PROVIDERS));
 
 export function getExecutor(provider) {
+  assertCommonChatGptWebProviderAvailable(provider);
   const registered = getRegisteredExecutor(provider);
   if (registered) return registered;
   if (CHAT_UNSUPPORTED_CLOUD_AGENT_PROVIDERS.has(provider)) {
@@ -316,7 +315,6 @@ export { PerplexityWebExecutor } from "./perplexity-web.ts";
 export { GrokWebExecutor } from "./grok-web.ts";
 export { GeminiWebExecutor } from "./gemini-web.ts";
 export { KieExecutor } from "./kie.ts";
-export { ChatGptWebExecutor } from "./chatgpt-web.ts";
 export { BlackboxWebExecutor } from "./blackbox-web.ts";
 export { MuseSparkWebExecutor } from "./muse-spark-web.ts";
 export { AzureOpenAIExecutor } from "./azure-openai.ts";

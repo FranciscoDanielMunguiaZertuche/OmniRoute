@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 // Carrega o modulo de forma ESTATICA (mesma convenção dos testes irmãos
-// chatgptTlsClient.test.ts / grokTlsClient.test.ts).
+// grokTlsClient.test.ts / perplexityTlsClient.test.ts).
 //
 // Por que isso importa: `claudeTlsClient.ts` puxa `tlsClientBase.ts` ->
 // `open-sse/utils/proxyFetch.ts`, cujo grafo de modulos custa ~5-12s para o

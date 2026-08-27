@@ -1,6 +1,6 @@
-// Tool contract serialization for ChatGPT Web performance models (#7679).
+// Tool contract serialization for web-cookie model adapters (#7679).
 //
-// GPT-5.6 Sol via chatgpt-web ignores the injected `<tool>` pseudo-contract
+// Some web-cookie models ignore the injected `<tool>` pseudo-contract
 // and replies in prose claiming tools are unavailable. This test covers the
 // nonce-bound serialization that clearly describes client-side tools and places
 // the full contract at the tail of the effective message list.

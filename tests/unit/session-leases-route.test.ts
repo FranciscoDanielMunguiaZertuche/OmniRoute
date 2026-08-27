@@ -12,6 +12,9 @@ process.env.DISABLE_SQLITE_AUTO_BACKUP = "true";
 const core = await import("../../src/lib/db/core.ts");
 const providersDb = await import("../../src/lib/db/providers.ts");
 const apiKeysDb = await import("../../src/lib/db/apiKeys.ts");
+const modelAliasesDb = await import("../../src/lib/db/models/aliases.ts");
+const settingsDb = await import("../../src/lib/db/settings.ts");
+const modelAliasResolver = await import("../../src/lib/modelAliasResolver.ts");
 const route = await import("../../src/app/api/v1/session-leases/route.ts");
 
 const OWNER_A = "vlo_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
@@ -67,6 +70,7 @@ async function resetStorage(): Promise<void> {
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
   fs.mkdirSync(TEST_DATA_DIR, { recursive: true });
   attemptedExternalCalls = 0;
+  modelAliasResolver.invalidateAliasCache();
 }
 
 test.before(() => {
@@ -111,6 +115,41 @@ test("requires authentication, managed scope, and canonical explicit owner", asy
   );
   assert.equal(malformed.status, 400);
   assert.equal(((await json(malformed)).error as { code: string }).code, "LEASE_CONTEXT_INVALID");
+  assert.equal(attemptedExternalCalls, 0);
+});
+
+test("lease acquire preserves deterministic retirement errors for common ChatGPT Web ids", async () => {
+  const connection = await seedConnection(1);
+  const managed = await seedKey([connection.id]);
+  const unmanaged = await seedKey([connection.id], []);
+
+  const beforePolicy = await route.POST(
+    request(unmanaged.key, { action: "acquire", model: "chatgpt-web/gpt-5.5" }, OWNER_A)
+  );
+  assert.equal(beforePolicy.status, 410);
+  assert.equal(((await json(beforePolicy)).error as { code?: string }).code, "PROVIDER_RETIRED");
+
+  for (const provider of ["chatgpt-web", "cgpt-web"]) {
+    const alias = `lease-via-${provider}`;
+    await modelAliasesDb.setModelAlias(alias, `${provider}/gpt-5.5`);
+    await settingsDb.updateSettings({
+      wildcardAliases: [{ pattern: `lease-wildcard-${provider}-*`, target: `${provider}/gpt-5.5` }],
+    });
+    modelAliasResolver.invalidateAliasCache();
+
+    for (const model of [`${provider}/gpt-5.5`, alias, `lease-wildcard-${provider}-model`]) {
+      const response = await route.POST(
+        request(managed.key, { action: "acquire", model }, OWNER_A)
+      );
+      const body = await json(response);
+      assert.equal(response.status, 410);
+      assert.equal((body.error as { code?: string }).code, "PROVIDER_RETIRED");
+      assert.equal(
+        (body.error as { message?: string }).message,
+        "Provider is retired and unavailable."
+      );
+    }
+  }
   assert.equal(attemptedExternalCalls, 0);
 });
 

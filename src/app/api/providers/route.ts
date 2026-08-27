@@ -43,6 +43,7 @@ import {
   getModelSyncInternalBaseUrl,
 } from "@/shared/services/modelSyncScheduler";
 import { finalizeValidatedChatGptWebCodexSecrets } from "@omniroute/open-sse/services/chatgptWebCodexAdmin.ts";
+import { rejectRetiredCommonChatGptWebProvider } from "@/lib/providers/chatgptWebRetirementResponse";
 
 // GET /api/providers - List all connections
 export async function GET(request: Request) {
@@ -126,6 +127,10 @@ export async function POST(request: Request) {
       providerSpecificData: incomingPsd,
     } = validation.data;
     const provider = resolveProviderId(requestedProvider);
+    const retirementResponse =
+      rejectRetiredCommonChatGptWebProvider(requestedProvider) ??
+      rejectRetiredCommonChatGptWebProvider(provider);
+    if (retirementResponse) return retirementResponse;
 
     // Business validation
     const isValidProvider =
@@ -343,6 +348,17 @@ export async function PATCH(request: Request) {
   const { ids, isActive } = validation.data;
 
   try {
+    if (isActive) {
+      const requestedIds = new Set(ids);
+      const requestedConnections = (
+        await getProviderConnections({}, undefined, undefined, ["id", "provider"])
+      ).filter((connection) => requestedIds.has(connection.id));
+      for (const connection of requestedConnections) {
+        const retirementResponse = rejectRetiredCommonChatGptWebProvider(connection.provider);
+        if (retirementResponse) return retirementResponse;
+      }
+    }
+
     // Partial-failure semantics: report unknown IDs instead of failing the whole batch
     const updatedIds: string[] = [];
     const notFoundIds: string[] = [];

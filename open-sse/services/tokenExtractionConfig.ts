@@ -104,16 +104,6 @@ const RAW_CONFIGS: TokenExtractionConfig[] = [
     "Log in to your Claude account at claude.ai. After login, the session cookie will be extracted automatically."
   ),
 
-  // ── ChatGPT Web ───────────────────────────────────────────
-  config(
-    "chatgpt-web",
-    "ChatGPT Web",
-    "https://chatgpt.com/auth/login",
-    "https://chatgpt.com",
-    [{ type: "cookie", name: "__Secure-next-auth.session-token", domain: ".chatgpt.com" }],
-    "Log in to ChatGPT. The __Secure-next-auth.session-token cookie will be extracted after login."
-  ),
-
   // ── Gemini Web ────────────────────────────────────────────
   config(
     "gemini-web",

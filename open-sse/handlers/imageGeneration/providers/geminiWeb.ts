@@ -1,7 +1,7 @@
 // Gemini Web image generation handler (#10466).
 //
 // Exposes the gemini-web session provider through POST /v1/images/generations.
-// Follows the chatgpt-web precedent (./chatgptWeb.ts): the web-session chat
+// Uses the shared web-session pattern: the chat
 // executor is driven with an image-generation prompt, and the generated
 // assets are extracted from the response.
 //
@@ -22,7 +22,7 @@ import { fetchRemoteImage } from "@/shared/network/remoteImageFetch";
 import { saveImageErrorResult, saveImageSuccessResult } from "../../imageGeneration.ts";
 import { sanitizeErrorMessage } from "../../../utils/error.ts";
 
-/** Each image is one gemini.google.com turn (~30-60s). Cap like chatgpt-web. */
+/** Each image is one gemini.google.com turn (~30-60s); keep fan-out bounded. */
 const GEMINI_WEB_IMAGE_N_MAX = 4;
 
 export function buildGeminiWebImagePrompt(body: Record<string, unknown>): string {

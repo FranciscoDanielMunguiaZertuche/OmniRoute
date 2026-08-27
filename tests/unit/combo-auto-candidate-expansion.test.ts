@@ -14,6 +14,7 @@ process.env.DATA_DIR = TEST_DATA_DIR;
 
 const core = await import("../../src/lib/db/core.ts");
 const providersDb = await import("../../src/lib/db/providers.ts");
+const modelsDb = await import("../../src/lib/db/models.ts");
 const combo = await import("../../open-sse/services/combo.ts");
 const providerModels = await import("../../open-sse/config/providerModels.ts");
 
@@ -61,6 +62,33 @@ test("expandAutoComboCandidatePool adds every model of an active provider when n
       `expected expanded targets to include ${id}`
     );
   }
+});
+
+test("expandAutoComboCandidatePool excludes restored retired ChatGPT Web connections", async () => {
+  const db = core.getDbInstance();
+  db.exec(`
+    DROP TRIGGER IF EXISTS provider_connections_retire_chatgpt_web_insert;
+    DROP TRIGGER IF EXISTS provider_connections_retire_chatgpt_web_update;
+  `);
+  for (const provider of ["chatgpt-web", "cgpt-web"]) {
+    db.prepare(
+      "INSERT INTO provider_connections " +
+        "(id, provider, auth_type, name, api_key, is_active, test_status, created_at, updated_at) " +
+        "VALUES (?, ?, 'apikey', ?, ?, 1, 'active', datetime('now'), datetime('now'))"
+    ).run(
+      `${provider}-restored-expansion`,
+      provider,
+      `${provider} restored expansion`,
+      `sk-${provider}-restored-expansion`
+    );
+    await modelsDb.addCustomModel(provider, "gpt-5.5", "Retired model fixture");
+  }
+
+  const expanded = await combo.expandAutoComboCandidatePool([], { config: {} });
+  assert.equal(
+    expanded.some((target) => ["chatgpt-web", "cgpt-web"].includes(target.provider)),
+    false
+  );
 });
 
 test("expandAutoComboCandidatePool is a no-op when an explicit candidatePool exists", async () => {

@@ -120,7 +120,6 @@ const WEB_COOKIE_PROVIDERS_WITH_UNRELIABLE_MODELS_PROBE = new Set(["lmarena"]);
 // WEB_COOKIE_PROVIDERS_WITH_UNRELIABLE_MODELS_PROBE/REDIRECT_BLOCKED path above (#7542).
 export const WEB_COOKIE_PROVIDERS_WITHOUT_MODELS_API = new Set([
   "huggingchat",
-  "chatgpt-web",
   "grok-web",
   "notion-web",
   "t3-web",

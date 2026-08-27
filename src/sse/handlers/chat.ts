@@ -63,6 +63,7 @@ import * as log from "../utils/logger";
 import { checkAndRefreshToken } from "../services/tokenRefresh";
 import { createHookContext, runHooks, initPreRequestRegistry } from "@/lib/middleware/registry";
 import { rejectPeerRequest } from "@/shared/resilience/peerRouting";
+import { isCommonChatGptWebRetirementError } from "@/shared/constants/chatgptWebRetirement";
 import { deleteHandoff, getHandoff } from "@/lib/db/contextHandoffs";
 import { getComboByName, updateCombo } from "@/lib/db/combos";
 import { isModelAllowedForKey } from "@/lib/db/apiKeys";
@@ -948,7 +949,13 @@ async function handleChatImplementation(
       // prefix may differ from the credential provider ID (e.g. model
       // "xiaomi/mimo-v2-flash" resolves to provider "xiaomi" but the combo
       // target specifies providerId: "opengate" for credential lookup).
-      const modelInfo = await getModelInfo(modelString);
+      let modelInfo;
+      try {
+        modelInfo = await getModelInfo(modelString);
+      } catch (error) {
+        if (isCommonChatGptWebRetirementError(error)) return false;
+        throw error;
+      }
       // Apply the same prefix-override guard as handleSingleModelChat:
       // if providerId is just the prefix already in the model string, use
       // the fully-resolved modelInfo.provider for a precise credential check.

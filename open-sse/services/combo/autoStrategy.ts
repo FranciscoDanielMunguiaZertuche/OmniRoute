@@ -28,6 +28,7 @@ import type {
   ResolvedComboTarget,
 } from "./types.ts";
 import { extractSessionAffinityKey } from "@/sse/services/auth";
+import { isCommonChatGptWebRetiredProviderId } from "@/shared/constants/chatgptWebRetirement";
 import { filterChatSelectableModels } from "../modelEndpointPolicy.ts";
 import { DEFAULT_INTENT_CONFIG, type IntentClassifierConfig } from "../intentClassifier.ts";
 import { getTaskFitness } from "../autoCombo/taskFitness.ts";
@@ -424,6 +425,13 @@ export async function expandAutoComboCandidatePool(
   eligibleTargets: ResolvedComboTarget[],
   combo: { autoConfig?: unknown; config?: unknown } | null | undefined
 ): Promise<ResolvedComboTarget[]> {
+  for (let index = eligibleTargets.length - 1; index >= 0; index -= 1) {
+    const target = eligibleTargets[index];
+    if (isCommonChatGptWebRetiredProviderId(target.providerId || target.provider)) {
+      eligibleTargets.splice(index, 1);
+    }
+  }
+
   const localAutoConfig =
     (combo?.autoConfig as Record<string, unknown> | undefined) ||
     (isRecord((combo?.config as Record<string, unknown>)?.auto)
@@ -457,7 +465,10 @@ export async function expandAutoComboCandidatePool(
       ...new Set(
         (allConnections as Array<{ provider?: unknown }>)
           .map((c) => c.provider)
-          .filter((p): p is string => typeof p === "string" && p.length > 0)
+          .filter(
+            (p): p is string =>
+              typeof p === "string" && p.length > 0 && !isCommonChatGptWebRetiredProviderId(p)
+          )
       ),
     ];
     // Pre-build a Set of already-present modelStr values so candidate-pool

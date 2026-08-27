@@ -44,7 +44,6 @@ const NOAUTH_IDS = Object.keys(NOAUTH_PROVIDERS) as NoauthId[];
  * not to actually authenticate.
  */
 const FAKE_CREDS: Record<string, string> = {
-  "chatgpt-web": "__Secure-next-auth.session-token=fake-audit-sweep",
   "grok-web": "sso=fake-audit-sweep",
   "gemini-web": "__Secure-1PSID=fake-audit-sweep",
   "perplexity-web": "__Secure-next-auth.session-token=fake-audit-sweep",

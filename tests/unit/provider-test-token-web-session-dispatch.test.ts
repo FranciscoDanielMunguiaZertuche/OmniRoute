@@ -15,7 +15,7 @@ test("token-kind cookie-auth web sessions use the API-key test path", () => {
 });
 
 test("cookie-kind web sessions do not use the API-key test path", () => {
-  assert.equal(shouldUseApiKeyConnectionTest("cookie", "chatgpt-web"), false);
+  assert.equal(shouldUseApiKeyConnectionTest("cookie", "perplexity-web"), false);
 
   assert.equal(shouldUseApiKeyConnectionTest("cookie", "claude-web"), false);
 });
@@ -36,7 +36,14 @@ test("token-kind web sessions WITHOUT a token-aware validator stay off the API-k
 });
 
 test("every token-kind web session with a real token-aware validator uses the API-key test path", () => {
-  for (const providerId of ["deepseek-web", "kimi-web", "tinycms-web", "copilot-m365-web", "copilot-web", "zai-web"]) {
+  for (const providerId of [
+    "deepseek-web",
+    "kimi-web",
+    "tinycms-web",
+    "copilot-m365-web",
+    "copilot-web",
+    "zai-web",
+  ]) {
     assert.equal(shouldUseApiKeyConnectionTest("cookie", providerId), true, providerId);
   }
 });

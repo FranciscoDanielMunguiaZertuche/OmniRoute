@@ -118,13 +118,13 @@ test("web session credential validator requires provider-specific non-empty valu
     false
   );
   assert.equal(
-    webSessionCredentials.hasUsableWebSessionCredential("chatgpt-web", {
+    webSessionCredentials.hasUsableWebSessionCredential("perplexity-web", {
       cookie: "__Secure-next-auth.session-token=session",
     }),
     true
   );
   assert.equal(
-    webSessionCredentials.hasUsableWebSessionCredential("chatgpt-web", { unrelated: "value" }),
+    webSessionCredentials.hasUsableWebSessionCredential("perplexity-web", { unrelated: "value" }),
     false
   );
 });
@@ -132,5 +132,5 @@ test("web session credential validator requires provider-specific non-empty valu
 test("no-auth web providers can be saved without an API key", () => {
   assert.equal(providers.providerAllowsOptionalApiKey("veoaifree-web"), true);
   assert.equal(webSessionCredentials.requiresWebSessionCredential("veoaifree-web"), false);
-  assert.equal(webSessionCredentials.requiresWebSessionCredential("chatgpt-web"), true);
+  assert.equal(webSessionCredentials.requiresWebSessionCredential("perplexity-web"), true);
 });

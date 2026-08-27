@@ -36,6 +36,11 @@ import { enforceClientApiRouteAuth } from "@/shared/utils/clientApiRouteAuth";
 import { runWithCallLogApiKeyContext } from "@/lib/usage/callLogApiKeyContext";
 import { executeImageWithCredentialFallback } from "@/sse/services/imageCredentialRetry";
 import { AUTHZ_HEADER_PEER_LOCALITY } from "@/server/authz/headers";
+import {
+  assertCommonChatGptWebModelAvailable,
+  CHATGPT_WEB_RETIRED_ERROR_CODE,
+  isCommonChatGptWebRetirementError,
+} from "@/shared/constants/chatgptWebRetirement";
 
 export const dynamic = "force-dynamic";
 
@@ -80,7 +85,7 @@ function hasImageGenerationInput(body: Record<string, unknown>) {
   return false;
 }
 
-// Forward only the host-shaped headers the chatgpt-web image handler needs
+// Forward only the host-shaped headers the Gemini Web image handler needs
 // to derive the browser-facing public base URL. Avoid copying the full
 // request header set: it's wider than the handler needs (auth tokens,
 // content-type, etc.) and `Headers.forEach` collapses repeated values, which
@@ -118,6 +123,19 @@ async function postHandler(request, context) {
   const authRejection = await enforceClientApiRouteAuth(request);
   if (authRejection) return authRejection;
 
+  // Fail closed on the raw wire id before combo/alias/custom-node remapping can erase it.
+  try {
+    assertCommonChatGptWebModelAvailable(body.model);
+  } catch (error) {
+    if (isCommonChatGptWebRetirementError(error)) {
+      return errorResponse(error.status, error.message, {
+        type: "provider_error",
+        code: CHATGPT_WEB_RETIRED_ERROR_CODE,
+      });
+    }
+    throw error;
+  }
+
   // Enforce API key policies (model restrictions + budget limits)
   const policy = await enforceApiKeyPolicy(request, body.model);
   if (policy.rejection) return policy.rejection;
@@ -127,16 +145,8 @@ async function postHandler(request, context) {
   if (body.model && typeof body.model === "string" && !body.model.includes("/")) {
     const combo = await getComboByName(body.model as string);
     if (combo) {
-      const { executeImageCombo } = await import(
-        "@omniroute/open-sse/services/imageCombo"
-      );
-      return executeImageCombo(
-        body.model as string,
-        body,
-        { request, policy },
-        startTime,
-        log
-      );
+      const { executeImageCombo } = await import("@omniroute/open-sse/services/imageCombo");
+      return executeImageCombo(body.model as string, body, { request, policy }, startTime, log);
     }
   }
 
@@ -144,7 +154,17 @@ async function postHandler(request, context) {
   // model (`myImg/gpt-image-2`) to its internal `<nodeId>/<model>` form so the
   // custom-model lookup and handler's resolvedProvider extraction resolve correctly.
   // Built-in and already-internal ids pass through unchanged. Shared with /images/edits.
-  body.model = await resolveImageRouteModel(body.model);
+  try {
+    body.model = await resolveImageRouteModel(body.model);
+  } catch (error) {
+    if (isCommonChatGptWebRetirementError(error)) {
+      return errorResponse(error.status, error.message, {
+        type: "provider_error",
+        code: CHATGPT_WEB_RETIRED_ERROR_CODE,
+      });
+    }
+    throw error;
+  }
 
   // Parse model to get provider
   let { provider, model: requestedModel } = parseImageModel(body.model);
@@ -246,7 +266,8 @@ async function postHandler(request, context) {
       provider,
       null,
       syncedEndpointRoute?.connectionIds ?? null,
-      requestedModel    );
+      requestedModel
+    );
     if (!credentials) {
       return errorResponse(
         HTTP_STATUS.BAD_REQUEST,
@@ -346,7 +367,10 @@ async function postHandler(request, context) {
     });
   }
 
-  const errorPayload = toJsonErrorPayload((result as any).error, "Image generation provider error") as {
+  const errorPayload = toJsonErrorPayload(
+    (result as any).error,
+    "Image generation provider error"
+  ) as {
     error?: { message?: string };
   };
   const message =

@@ -447,7 +447,7 @@ export class GeminiWebExecutor extends BaseExecutor {
    * Google rotated any of the __Secure-1PSID* cookies, forward the merged
    * cookie string through onCredentialsRefreshed so it gets persisted to the
    * encrypted provider_connections.api_key field. Mirrors the rotate-and-
-   * persist pattern already shipped in chatgpt-web.ts. A persistence failure
+   * persist pattern used by other rotating-session executors. A persistence failure
    * must never fail the user-facing response (#7676).
    */
   private async persistRotatedCookies(
@@ -645,7 +645,7 @@ export class GeminiWebExecutor extends BaseExecutor {
       }
 
       // #10466 image mode: return the captured image URLs to the image
-      // handler via a custom field (same precedent as chatgpt-web's
+      // handler via a custom field (same precedent as other web-session executors'
       // x_image_resolution_failed). An image-only answer can carry little or
       // no text, so the empty-text 502 below must not fire when images
       // were captured.

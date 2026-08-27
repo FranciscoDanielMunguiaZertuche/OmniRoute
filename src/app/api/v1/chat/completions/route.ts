@@ -27,6 +27,10 @@ import {
   withCompressionHeaderEcho,
 } from "@/shared/utils/compressionHeaderEcho";
 import { resolveModelAliasWithSeedFallbackOnBody } from "@/lib/modelAliasResolver";
+import {
+  assertCommonChatGptWebModelAvailable,
+  isCommonChatGptWebRetirementError,
+} from "@/shared/constants/chatgptWebRetirement";
 
 let initPromise = null;
 
@@ -146,6 +150,20 @@ export async function POST(request) {
             return finishAdmission(
               errorResponse(400, `${field}: ${issue?.message ?? "Invalid request"}`)
             );
+          }
+
+          try {
+            assertCommonChatGptWebModelAvailable(parsedBody.model);
+          } catch (error) {
+            if (isCommonChatGptWebRetirementError(error)) {
+              return finishAdmission(
+                errorResponse(error.status, error.message, {
+                  type: "provider_error",
+                  code: error.code,
+                })
+              );
+            }
+            throw error;
           }
         }
 

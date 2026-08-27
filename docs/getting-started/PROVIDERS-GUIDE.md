@@ -21,7 +21,7 @@ Think of a provider like a **phone carrier**. Just as you need a phone carrier t
 | **Free**       | No payment required       | Kiro, OpenCode Free, Pollinations | $0                     |
 | **API Key**    | You need an API key       | OpenAI, Anthropic, Google         | Pay per use            |
 | **OAuth**      | Login with your account   | Claude Code, GitHub Copilot       | Subscription           |
-| **Web Cookie** | Uses your browser session | ChatGPT Web, Gemini Web           | $0 (uses your account) |
+| **Web Cookie** | Uses your browser session | ChatGPT Web (Codex), Gemini Web   | $0 (uses your account) |
 
 ### Web Cookie Providers
 

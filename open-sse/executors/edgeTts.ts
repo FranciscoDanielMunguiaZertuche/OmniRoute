@@ -3,7 +3,7 @@
  *
  * Reverse-engineered, unofficial, undocumented endpoint (not a published
  * Microsoft public API) — the same class of integration this codebase
- * already accepts for other "-web" style providers (chatgpt-web.ts,
+ * already accepts for other "-web" style providers (perplexity-web.ts,
  * copilot-web.ts). No user account/API key is required; Microsoft gates
  * abuse with a `Sec-MS-GEC` header computed from a public "trusted client
  * token" (see `open-sse/utils/publicCreds.ts::edgetts_token` — Hard Rule

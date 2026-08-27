@@ -21,6 +21,12 @@ import { getLearnedReasoningEffortForModel } from "@omniroute/open-sse/services/
 import { REGISTRY } from "@omniroute/open-sse/config/providerRegistry.ts";
 import { getRegisteredProviderEffortBaseModelId } from "@omniroute/open-sse/utils/registeredEffortVariants.ts";
 import { getReservedProviderPrefixes } from "@/shared/constants/reservedProviderPrefixes";
+import {
+  assertCommonChatGptWebModelAvailable,
+  assertCommonChatGptWebProviderAvailable,
+  isCommonChatGptWebRetirementError,
+} from "@/shared/constants/chatgptWebRetirement";
+import { commonChatGptWebRetirementResponse } from "@/lib/providers/chatgptWebRetirementResponse";
 
 export { parseModel, stripContextWindowSuffix };
 
@@ -405,10 +411,20 @@ function stripRedundantNodePrefix(model: string, nodePrefix: unknown): string {
  * Get full model info (parse or resolve)
  */
 export async function getModelInfo(modelStr) {
+  // Reject the raw common-provider identity before compatible-node lookup or
+  // stripModelPrefix can erase/remap it. Ordinary bare model aliases remain
+  // operator-owned; the two retired bare ids are intentionally blocked.
+  assertCommonChatGptWebModelAvailable(modelStr);
   const parsed = parseModel(modelStr);
   const { extendedContext } = parsed;
 
+  const assertResolvedModelAvailable = (info: any) => {
+    assertCommonChatGptWebProviderAvailable(info?.provider);
+    return info;
+  };
+
   const attachRuntimeModelMeta = async (info: any) => {
+    assertResolvedModelAvailable(info);
     if (!info?.provider || !info?.model) return info;
 
     const providerId = String(info.provider);
@@ -465,12 +481,12 @@ export async function getModelInfo(modelStr) {
           matchedOpenAI.id as string,
           normalizedModel
         );
-        return {
+        return assertResolvedModelAvailable({
           provider: matchedOpenAI.id,
           model: modelId,
           extendedContext,
           ...metadata,
-        };
+        });
       }
 
       // Check Anthropic Compatible nodes
@@ -487,12 +503,12 @@ export async function getModelInfo(modelStr) {
           matchedAnthropic.id as string,
           normalizedModel
         );
-        return {
+        return assertResolvedModelAvailable({
           provider: matchedAnthropic.id,
           model: modelId,
           extendedContext,
           ...metadata,
-        };
+        });
       }
     }
 
@@ -502,7 +518,7 @@ export async function getModelInfo(modelStr) {
       const settings = await getCachedSettings();
       if (settings.stripModelPrefix === true) {
         const strippedResult = await getModelInfoCore(parsed.model, getCombinedModelAliases);
-        return { ...strippedResult, extendedContext };
+        return assertResolvedModelAvailable({ ...strippedResult, extendedContext });
       }
     } catch {
       // If settings read fails, fall through to normal resolution
@@ -514,6 +530,17 @@ export async function getModelInfo(modelStr) {
   }
 
   return await attachRuntimeModelMeta(await getModelInfoCore(modelStr, getCombinedModelAliases));
+}
+
+export async function getModelInfoOrRetirementResponse(modelId: string) {
+  try {
+    return await getModelInfo(modelId);
+  } catch (error) {
+    if (isCommonChatGptWebRetirementError(error)) {
+      return { error: commonChatGptWebRetirementResponse() };
+    }
+    throw error;
+  }
 }
 
 /**
