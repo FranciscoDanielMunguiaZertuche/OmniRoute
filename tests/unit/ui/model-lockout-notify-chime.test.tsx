@@ -164,7 +164,7 @@ describe("Model lockout optional notification sound", () => {
   });
 
   it("plays generated feedback for both model-lockout toggles", async () => {
-    const { AudioContextMock, oscillators } = createAudioContextMock();
+    const { AudioContextMock, contexts, gains, oscillators } = createAudioContextMock();
     vi.stubGlobal("AudioContext", AudioContextMock);
     const legacyAudio = vi.fn(() => ({
       currentTime: 0,
@@ -181,10 +181,40 @@ describe("Model lockout optional notification sound", () => {
     act(() => toggles[0]?.click());
     act(() => toggles[1]?.click());
 
+    expect(contexts).toHaveLength(1);
     expect(oscillators).toHaveLength(2);
-    expect(oscillators.every((oscillator) => oscillator.start.mock.calls.length === 1)).toBe(true);
-    expect(oscillators.every((oscillator) => oscillator.stop.mock.calls.length === 1)).toBe(true);
+    expect(gains).toHaveLength(2);
+    oscillators.forEach((oscillator, index) => {
+      const gain = gains[index];
+      expect(gain).toBeDefined();
+      expect(oscillator.type).toBe("sine");
+      expect(oscillator.frequency.setValueAtTime).toHaveBeenCalledWith(880, 1);
+      expect(oscillator.connect).toHaveBeenCalledWith(gain);
+      expect(gain?.connect).toHaveBeenCalledWith(contexts[0]?.destination);
+      expect(gain?.gain.setValueAtTime).toHaveBeenCalledWith(0.0001, 1);
+      expect(gain?.gain.exponentialRampToValueAtTime).toHaveBeenNthCalledWith(1, 0.045, 1.012);
+      expect(gain?.gain.exponentialRampToValueAtTime).toHaveBeenNthCalledWith(2, 0.0001, 1.09);
+      expect(oscillator.start).toHaveBeenCalledWith(1);
+      expect(oscillator.stop).toHaveBeenCalledWith(1.1);
+
+      oscillator.onended?.();
+      expect(oscillator.disconnect).toHaveBeenCalledOnce();
+      expect(gain?.disconnect).toHaveBeenCalledOnce();
+    });
     expect(legacyAudio).not.toHaveBeenCalled();
+  });
+
+  it("uses the prefixed Web Audio constructor when AudioContext is unavailable", async () => {
+    const { AudioContextMock, contexts, oscillators } = createAudioContextMock();
+    vi.stubGlobal("AudioContext", undefined);
+    vi.stubGlobal("webkitAudioContext", AudioContextMock);
+
+    const { container } = await renderCard();
+    const toggle = container.querySelector<HTMLButtonElement>('button[role="switch"]');
+    act(() => toggle?.click());
+
+    expect(contexts).toHaveLength(1);
+    expect(oscillators).toHaveLength(1);
   });
 
   it("starts the optional chime after a suspended context resumes", async () => {
