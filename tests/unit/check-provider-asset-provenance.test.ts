@@ -82,12 +82,43 @@ function provenAsset(path: string, content: string | Buffer = SVG) {
   };
 }
 
-function runGate(providersDir: string, manifestPath: string) {
+function runGate(providersDir: string, manifestPath: string, timeout?: number) {
   return spawnSync(
     process.execPath,
     [SCRIPT_PATH, "--providers-dir", providersDir, "--manifest", manifestPath],
-    { encoding: "utf8" }
+    { encoding: "utf8", timeout }
   );
+}
+
+function gitObjectId(revision: string) {
+  const result = spawnSync("git", ["-C", REPO_ROOT, "rev-parse", revision], {
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  return result.stdout.trim();
+}
+
+function gitRootCommit() {
+  const result = spawnSync("git", ["-C", REPO_ROOT, "rev-list", "--max-parents=0", "HEAD"], {
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  return result.stdout.trim().split(/\r?\n/)[0];
+}
+
+function workflowJob(source: string, name: string) {
+  const lines = source.split("\n");
+  const start = lines.indexOf(`  ${name}:`);
+  assert.notEqual(start, -1, `workflow job ${name} must exist`);
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index++) {
+    const line = lines[index];
+    if (line.startsWith("  ") && !line.startsWith("   ") && line.endsWith(":")) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start + 1, end).join("\n");
 }
 
 test("provider asset provenance gate rejects a new physical asset without a manifest record", () => {
@@ -210,6 +241,28 @@ test("provider asset provenance gate recognizes an SVG with an XML doctype", () 
     const result = runGate(fixture.providersDir, fixture.manifestPath);
 
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("provider asset provenance gate scans adversarial SVG comment chains within a fixed bound", () => {
+  const fixture = makeFixture();
+  const adversarial = `<!--${"--><!--".repeat(50_000)}`;
+  try {
+    writeFileSync(join(fixture.providersDir, "adversarial.svg"), adversarial);
+    writeManifest(fixture.manifestPath, [
+      unresolvedAsset("public/providers/adversarial.svg", adversarial),
+    ]);
+
+    const result = runGate(fixture.providersDir, fixture.manifestPath, 10_000);
+
+    assert.equal(result.error, undefined, result.error?.message);
+    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+    assert.match(
+      `${result.stdout}\n${result.stderr}`,
+      /mediaType mismatch: public\/providers\/adversarial\.svg \(manifest image\/svg\+xml, actual unknown\)/
+    );
   } finally {
     rmSync(fixture.root, { recursive: true, force: true });
   }
@@ -391,6 +444,59 @@ test("provider asset provenance gate rejects a stale expected asset count", () =
   }
 });
 
+test("provider asset provenance gate rejects a missing or non-commit auditedCommit", () => {
+  const fixture = makeFixture();
+  const missingObject = "f".repeat(40);
+  const blobObject = gitObjectId("HEAD:README.md");
+  try {
+    writeFileSync(join(fixture.providersDir, "registered.svg"), SVG);
+
+    for (const [auditedCommit, expectedError] of [
+      [missingObject, `auditedCommit object does not exist: ${missingObject}`],
+      [blobObject, `auditedCommit must identify a Git commit: ${blobObject} (found blob)`],
+    ] as const) {
+      writeManifest(fixture.manifestPath, [unresolvedAsset("public/providers/registered.svg")], {
+        auditedCommit,
+      });
+
+      const result = runGate(fixture.providersDir, fixture.manifestPath);
+
+      assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+      assert.ok(`${result.stdout}\n${result.stderr}`.includes(expectedError));
+    }
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("provider asset provenance gate binds auditedCommit to the physical provider snapshot", () => {
+  const fixture = makeFixture();
+  try {
+    const records = readFileSync(
+      join(REPO_ROOT, "config/quality/provider-assets-provenance.jsonl"),
+      "utf8"
+    )
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    records[0] = { ...records[0], auditedCommit: gitRootCommit() };
+    writeFileSync(
+      fixture.manifestPath,
+      `${records.map((record) => JSON.stringify(record)).join("\n")}\n`
+    );
+
+    const result = runGate(join(REPO_ROOT, "public/providers"), fixture.manifestPath);
+
+    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+    assert.match(
+      `${result.stdout}\n${result.stderr}`,
+      /auditedCommit provider snapshot (?:is missing|differs): public\/providers\//
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("repository provider asset manifest covers the audited 225-file snapshot", () => {
   const result = runGate(
     join(REPO_ROOT, "public/providers"),
@@ -406,9 +512,13 @@ test("repository provider asset manifest covers the audited 225-file snapshot", 
 
 test("provider asset provenance gate stays on both blocking CI rails", () => {
   const ci = readFileSync(join(REPO_ROOT, ".github/workflows/ci.yml"), "utf8");
-  assert.match(ci, /^\s*- run: npm run check:provider-asset-provenance\s*$/m);
+  const ciLintJob = workflowJob(ci, "lint");
+  assert.match(ciLintJob, /^\s*- run: npm run check:provider-asset-provenance\s*$/m);
+  assert.match(ciLintJob, /fetch-depth: 0/);
 
   const quality = readFileSync(join(REPO_ROOT, ".github/workflows/quality.yml"), "utf8");
-  assert.match(quality, /gates=\([\s\S]*?\bprovider-asset-provenance\b[\s\S]*?\)/);
-  assert.match(quality, /npm run "check:\$g"/);
+  const qualityFastGatesJob = workflowJob(quality, "fast-gates");
+  assert.match(qualityFastGatesJob, /gates=\([\s\S]*?\bprovider-asset-provenance\b[\s\S]*?\)/);
+  assert.match(qualityFastGatesJob, /npm run "check:\$g"/);
+  assert.match(qualityFastGatesJob, /fetch-depth: 0/);
 });

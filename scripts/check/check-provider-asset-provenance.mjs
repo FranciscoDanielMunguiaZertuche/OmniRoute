@@ -1,23 +1,107 @@
 #!/usr/bin/env node
 
-import { readFile, readdir } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { readFile, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
+const defaultProvidersDir = join(repoRoot, "public/providers");
+const defaultManifestPath = join(repoRoot, "config/quality/provider-assets-provenance.jsonl");
 
 function readOption(name, fallback) {
   const index = process.argv.indexOf(name);
   return index >= 0 ? resolve(process.argv[index + 1]) : fallback;
 }
 
-const providersDir = readOption("--providers-dir", join(repoRoot, "public/providers"));
-const manifestPath = readOption(
-  "--manifest",
-  join(repoRoot, "config/quality/provider-assets-provenance.jsonl")
-);
+const providersDir = readOption("--providers-dir", defaultProvidersDir);
+const manifestPath = readOption("--manifest", defaultManifestPath);
 const PROVENANCE_STATUSES = new Set(["proven", "probable", "unresolved"]);
+
+function isXmlWhitespace(character) {
+  return character === " " || character === "\t" || character === "\n" || character === "\r";
+}
+
+function skipXmlWhitespace(text, start) {
+  let index = start;
+  while (index < text.length && isXmlWhitespace(text[index])) index += 1;
+  return index;
+}
+
+function startsWithAsciiCaseInsensitive(text, token, start) {
+  if (start + token.length > text.length) return false;
+  return text.slice(start, start + token.length).toLowerCase() === token;
+}
+
+function skipXmlComments(text, start) {
+  let index = start;
+  while (text.startsWith("<!--", index)) {
+    const commentEnd = text.indexOf("-->", index + 4);
+    if (commentEnd < 0) return -1;
+    index = skipXmlWhitespace(text, commentEnd + 3);
+  }
+  return index;
+}
+
+function skipSvgDoctype(text, start) {
+  if (!startsWithAsciiCaseInsensitive(text, "<!doctype", start)) return start;
+  let index = start + "<!doctype".length;
+  if (!isXmlWhitespace(text[index])) return -1;
+  index = skipXmlWhitespace(text, index);
+  if (!startsWithAsciiCaseInsensitive(text, "svg", index)) return -1;
+  index += 3;
+  if (
+    index < text.length &&
+    !isXmlWhitespace(text[index]) &&
+    text[index] !== "[" &&
+    text[index] !== ">"
+  ) {
+    return -1;
+  }
+
+  let quote = null;
+  let subsetDepth = 0;
+  for (; index < text.length; index++) {
+    const character = text[index];
+    if (quote) {
+      if (character === quote) quote = null;
+    } else if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === "[") {
+      subsetDepth += 1;
+    } else if (character === "]" && subsetDepth > 0) {
+      subsetDepth -= 1;
+    } else if (character === ">" && subsetDepth === 0) {
+      return index + 1;
+    }
+  }
+  return -1;
+}
+
+function hasSvgRoot(content) {
+  let text = content.toString("utf8");
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+  let index = skipXmlWhitespace(text, 0);
+
+  if (startsWithAsciiCaseInsensitive(text, "<?xml", index)) {
+    const declarationEnd = text.indexOf("?>", index + 5);
+    if (declarationEnd < 0) return false;
+    index = skipXmlWhitespace(text, declarationEnd + 2);
+  }
+
+  index = skipXmlComments(text, index);
+  if (index < 0) return false;
+  const afterDoctype = skipSvgDoctype(text, index);
+  if (afterDoctype < 0) return false;
+  index = skipXmlWhitespace(text, afterDoctype);
+  index = skipXmlComments(text, index);
+  if (index < 0 || !startsWithAsciiCaseInsensitive(text, "<svg", index)) return false;
+  const boundary = text[index + 4];
+  return (
+    boundary === undefined || boundary === ">" || boundary === "/" || isXmlWhitespace(boundary)
+  );
+}
 
 function detectMediaType(content) {
   const pngSignature = "89504e470d0a1a0a";
@@ -28,18 +112,42 @@ function detectMediaType(content) {
     return "image/jpeg";
   }
 
-  const text = content
-    .toString("utf8")
-    .replace(/^\uFEFF/, "")
-    .trimStart();
-  if (
-    /^(?:<\?xml[\s\S]*?\?>\s*)?(?:<!--[\s\S]*?-->\s*)*(?:<!DOCTYPE\s+svg[\s\S]*?>\s*)?(?:<!--[\s\S]*?-->\s*)*<svg\b/i.test(
-      text
-    )
-  ) {
-    return "image/svg+xml";
+  return hasSvgRoot(content) ? "image/svg+xml" : null;
+}
+
+function isAsciiDigitString(value) {
+  if (!value) return false;
+  for (const character of value) {
+    if (character < "0" || character > "9") return false;
   }
-  return null;
+  return true;
+}
+
+function isPinnedSemver(value) {
+  if (typeof value !== "string" || value.length === 0) return false;
+  const normalized = value.startsWith("v") ? value.slice(1) : value;
+  let suffixIndex = -1;
+  for (let index = 0; index < normalized.length; index++) {
+    if (normalized[index] === "-" || normalized[index] === "+") {
+      suffixIndex = index;
+      break;
+    }
+  }
+  const core = suffixIndex < 0 ? normalized : normalized.slice(0, suffixIndex);
+  const suffix = suffixIndex < 0 ? null : normalized.slice(suffixIndex + 1);
+  if (suffix !== null) {
+    if (suffix.length === 0) return false;
+    for (const character of suffix) {
+      const isDigit = character >= "0" && character <= "9";
+      const isLowercase = character >= "a" && character <= "z";
+      const isUppercase = character >= "A" && character <= "Z";
+      if (!isDigit && !isLowercase && !isUppercase && character !== "." && character !== "-") {
+        return false;
+      }
+    }
+  }
+  const parts = core.split(".");
+  return parts.length === 3 && parts.every(isAsciiDigitString);
 }
 
 function hasImmutableSourceEvidence(source) {
@@ -52,7 +160,7 @@ function hasImmutableSourceEvidence(source) {
     return /^[0-9a-f]{40}$/i.test(source.ref) && /^sha256:[0-9a-f]{64}$/.test(source.integrity);
   }
   return (
-    /^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(source.ref) &&
+    isPinnedSemver(source.ref) &&
     /^sha512-[A-Za-z0-9+/]{86}==$/.test(source.integrity) &&
     /^[0-9a-f]{40}$/i.test(source.packageShasum)
   );
@@ -72,6 +180,92 @@ function isValidUpstreamLicenseClaim(claim) {
     typeof claim.scope === "string" &&
     /no trademark clearance/i.test(claim.scope)
   );
+}
+
+function inspectGitCommit(objectId) {
+  const result = spawnSync("git", ["-C", repoRoot, "cat-file", "-t", objectId], {
+    encoding: "utf8",
+  });
+  if (result.error) {
+    return `unable to verify auditedCommit with Git: ${result.error.message}`;
+  }
+  if (result.status !== 0) {
+    return `auditedCommit object does not exist: ${objectId}`;
+  }
+  const objectType = result.stdout.trim();
+  if (objectType !== "commit") {
+    return `auditedCommit must identify a Git commit: ${objectId} (found ${objectType || "unknown"})`;
+  }
+  return null;
+}
+
+function verifyAuditedProviderSnapshot(commit, physicalFiles) {
+  const failures = [];
+  const treeResult = spawnSync(
+    "git",
+    ["-C", repoRoot, "ls-tree", "-r", "-z", commit, "--", "public/providers"],
+    { encoding: "utf8" }
+  );
+  if (treeResult.error) {
+    return [`unable to read audited provider tree with Git: ${treeResult.error.message}`];
+  }
+  if (treeResult.status !== 0) {
+    return [
+      `unable to read audited provider tree for ${commit}: ${treeResult.stderr.trim() || "git ls-tree failed"}`,
+    ];
+  }
+
+  const auditedBlobs = new Map();
+  for (const entry of treeResult.stdout.split("\0").filter(Boolean)) {
+    const tabIndex = entry.indexOf("\t");
+    const metadata = entry.slice(0, tabIndex).split(" ");
+    const path = entry.slice(tabIndex + 1);
+    const [, objectType, objectId] = metadata;
+    if (tabIndex < 0 || objectType !== "blob" || !objectId) {
+      failures.push(`invalid Git tree entry at auditedCommit: ${entry}`);
+      continue;
+    }
+    auditedBlobs.set(path, objectId);
+  }
+
+  const hashResult = spawnSync("git", ["-C", repoRoot, "hash-object", "--", ...physicalFiles], {
+    encoding: "utf8",
+  });
+  if (hashResult.error) {
+    return [
+      ...failures,
+      `unable to hash physical provider assets with Git: ${hashResult.error.message}`,
+    ];
+  }
+  if (hashResult.status !== 0) {
+    return [
+      ...failures,
+      `unable to hash physical provider assets with Git: ${hashResult.stderr.trim() || "git hash-object failed"}`,
+    ];
+  }
+  const physicalBlobIds = hashResult.stdout.trim() ? hashResult.stdout.trim().split(/\r?\n/) : [];
+  if (physicalBlobIds.length !== physicalFiles.length) {
+    failures.push(
+      `Git hash count mismatch: expected ${physicalFiles.length}, received ${physicalBlobIds.length}`
+    );
+  }
+
+  const physicalPaths = new Set(physicalFiles);
+  for (let index = 0; index < physicalFiles.length; index++) {
+    const path = physicalFiles[index];
+    const auditedBlobId = auditedBlobs.get(path);
+    if (!auditedBlobId) {
+      failures.push(`auditedCommit provider snapshot is missing: ${path}`);
+    } else if (auditedBlobId !== physicalBlobIds[index]) {
+      failures.push(`auditedCommit provider snapshot differs: ${path}`);
+    }
+  }
+  for (const path of auditedBlobs.keys()) {
+    if (!physicalPaths.has(path)) {
+      failures.push(`auditedCommit provider snapshot has no physical file: ${path}`);
+    }
+  }
+  return failures;
 }
 
 async function readManifest(path) {
@@ -130,6 +324,13 @@ async function main() {
     }
     if (typeof header.auditedCommit !== "string" || !/^[0-9a-f]{40}$/i.test(header.auditedCommit)) {
       failures.push("manifest auditedCommit must be a full 40-character Git SHA");
+    } else {
+      const gitCommitFailure = inspectGitCommit(header.auditedCommit);
+      if (gitCommitFailure) {
+        failures.push(gitCommitFailure);
+      } else if (providersDir === defaultProvidersDir) {
+        failures.push(...verifyAuditedProviderSnapshot(header.auditedCommit, physicalFiles));
+      }
     }
     if (typeof header.auditedAt !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(header.auditedAt)) {
       failures.push("manifest auditedAt must use YYYY-MM-DD");
