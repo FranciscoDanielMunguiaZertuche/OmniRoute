@@ -1,0 +1,1 @@
+- **docs(legal):** centralize pinned MIT notices for the vendored GCF codec and local flag assets
