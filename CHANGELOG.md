@@ -6721,8 +6721,9 @@ And thank you to the OmniRoute community for the bug reports, reproductions, and
 - **MITM targets registry** (`src/mitm/targets/`) — declarative `MitmTarget` shape per agent;
   emits `DATA_DIR/mitm/targets.json` for dynamic `server.cjs` resolution.
 - **Traffic Inspector core** (`src/mitm/inspector/`) — `TrafficBuffer` in-memory ring,
-  `kindDetector`, `sseMerger` (MIT port from chouzz/llm-interceptor), `conversationNormalizer`
-  (MIT port), `contextKey` fingerprinting, `httpProxyServer`, `systemProxyConfig`.
+  `kindDetector`, `sseMerger` and `conversationNormalizer` (the two derived modules were replaced
+  in v3.8.50 by independent clean-room implementations), `contextKey` fingerprinting,
+  `httpProxyServer`, `systemProxyConfig`.
 - **AgentBridge passthrough + bypass** (`src/mitm/passthrough.ts`) — TCP tunnel for
   non-mapped hosts; bypass list with default sensitive-host patterns + user-defined patterns.
 - **Upstream CA cert** (`src/mitm/upstreamTrust.ts`) — `AGENTBRIDGE_UPSTREAM_CA_CERT` for
