@@ -65,7 +65,7 @@ export const ErrorCodes = {
   VALIDATION_002: "VALIDATION_002", // Missing required field
 
   // Server
-  SERVER_001: "SERVER_001", // Internal server error
+  SERVER_001: "SERVER_001", // Service error
   SERVER_002: "SERVER_002", // Service unavailable
   SERVER_003: "SERVER_003", // Configuration error
 

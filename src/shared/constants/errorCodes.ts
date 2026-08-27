@@ -197,7 +197,7 @@ export const ERROR_CODES: Record<string, ErrorCodeDef> = {
   // ── Internal ──
   INTERNAL_001: {
     code: "INTERNAL_001",
-    message: "Internal server error",
+    message: "Service error",
     httpStatus: 500,
     category: "INTERNAL",
   },

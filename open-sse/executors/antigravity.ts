@@ -556,7 +556,7 @@ export class AntigravityExecutor extends BaseExecutor {
 
     if (!projectId) {
       // (#489) Return a structured error instead of throwing — gives the client a clear signal
-      // to show a "Reconnect OAuth" prompt rather than an opaque "Internal Server Error".
+      // to show a "Reconnect OAuth" prompt rather than an opaque "Something went wrong".
       const errorMsg =
         "Missing Google projectId for Antigravity account. Auto-discovery via loadCodeAssist " +
         "found no Cloud Code project. Please reconnect OAuth in Providers → Antigravity (and " +

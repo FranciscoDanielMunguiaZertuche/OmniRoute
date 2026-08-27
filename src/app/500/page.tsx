@@ -5,7 +5,7 @@ export default function InternalServerErrorPage() {
     <ErrorPageScaffold
       code="500"
       icon="warning"
-      title="Internal Server Error"
+      title="Something went wrong"
       description="An unexpected server-side error occurred while processing your request."
       suggestions={[
         "Retry once in a few seconds.",

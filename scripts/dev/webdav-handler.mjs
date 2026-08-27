@@ -494,8 +494,7 @@ function buildEntryHref(baseHref, relativePath, isDir) {
 function handleOptions(req, res) {
   res.writeHead(200, {
     DAV: "1, 2",
-    Allow:
-      "OPTIONS, GET, HEAD, PUT, DELETE, MKCOL, MOVE, COPY, PROPFIND, LOCK, UNLOCK",
+    Allow: "OPTIONS, GET, HEAD, PUT, DELETE, MKCOL, MOVE, COPY, PROPFIND, LOCK, UNLOCK",
     "MS-Author-Via": "DAV",
     "Content-Length": "0",
   });
@@ -996,7 +995,7 @@ export async function maybeHandleWebdav(req, res) {
     }
   } catch {
     if (!res.headersSent) {
-      sendError(res, 500, "Internal server error");
+      sendError(res, 500, "Service error");
     }
   }
 

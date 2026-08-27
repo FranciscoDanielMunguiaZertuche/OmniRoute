@@ -86,12 +86,10 @@ function removeNativeModules(baseDir, prefixes = ["keytar"]) {
 // Fail the build if hashed native copies survived the cleanup above. Without this,
 // a wrong baseDir makes removeNativeModules() a silent no-op (it early-returns when
 // the directory does not exist) and the ABI mismatch only surfaces at runtime on a
-// user machine as "Internal Server Error" on every route.
+// user machine as "Something went wrong" on every route.
 function assertNoStaleHashedNatives(baseDir, prefixes) {
   if (!existsSync(baseDir)) return;
-  const leftovers = readdirSync(baseDir).filter((dir) =>
-    prefixes.some((p) => dir.startsWith(p))
-  );
+  const leftovers = readdirSync(baseDir).filter((dir) => prefixes.some((p) => dir.startsWith(p)));
   if (leftovers.length > 0) {
     throw new Error(
       `[electron] stale native module copies survived cleanup in ${baseDir}: ` +
@@ -142,27 +140,23 @@ function rebuildBetterSqlite3ForElectron(standaloneNodeModules) {
 
   console.log(`[electron] rebuilding better-sqlite3 against electron ${electronVersion} ABI…`);
   const plan = buildRebuildSpawnPlan(process.platform);
-  const result = spawnSync(
-    plan.command,
-    plan.args,
-    {
-      cwd: destMod,
-      stdio: "inherit",
-      // .cmd shims must go through a shell on Windows (CVE-2024-27980 hardening
-      // makes a shell-less spawn fail with status null); args are fixed literals.
-      shell: plan.shell,
-      // Compile against the Electron headers (not Node's) so the .node lands in
-      // build/Release with the Electron NODE_MODULE_VERSION. No shell interpolation.
-      env: {
-        ...process.env,
-        npm_config_runtime: "electron",
-        npm_config_target: electronVersion,
-        npm_config_disturl: "https://electronjs.org/headers",
-        npm_config_arch: process.arch,
-        npm_config_build_from_source: "true",
-      },
-    }
-  );
+  const result = spawnSync(plan.command, plan.args, {
+    cwd: destMod,
+    stdio: "inherit",
+    // .cmd shims must go through a shell on Windows (CVE-2024-27980 hardening
+    // makes a shell-less spawn fail with status null); args are fixed literals.
+    shell: plan.shell,
+    // Compile against the Electron headers (not Node's) so the .node lands in
+    // build/Release with the Electron NODE_MODULE_VERSION. No shell interpolation.
+    env: {
+      ...process.env,
+      npm_config_runtime: "electron",
+      npm_config_target: electronVersion,
+      npm_config_disturl: "https://electronjs.org/headers",
+      npm_config_arch: process.arch,
+      npm_config_build_from_source: "true",
+    },
+  });
   if (result.status !== 0) {
     throw new Error(
       `[electron] better-sqlite3 rebuild against electron ${electronVersion} failed (exit ${result.status}).`

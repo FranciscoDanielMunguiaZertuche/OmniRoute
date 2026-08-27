@@ -138,9 +138,15 @@ describe("providerPageHelpers — model-compat pure functions", () => {
   });
 
   it("formatProviderModelsErrorResponse falls back to statusText", async () => {
+    const mockRes = new Response("{}", { status: 500, statusText: "Service error" });
+    const detail = await formatProviderModelsErrorResponse(mockRes);
+    expect(detail).toBe("Service error");
+  });
+
+  it("formatProviderModelsErrorResponse sanitizes Internal Server Error statusText", async () => {
     const mockRes = new Response("{}", { status: 500, statusText: "Internal Server Error" });
     const detail = await formatProviderModelsErrorResponse(mockRes);
-    expect(detail).toBe("Internal Server Error");
+    expect(detail).toBe("Service error");
   });
 });
 

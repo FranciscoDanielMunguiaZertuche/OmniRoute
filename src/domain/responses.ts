@@ -129,11 +129,11 @@ export function tooManyRequests(retryAfterSec = 60) {
 }
 
 /**
- * Create a 500 Internal Server Error response.
+ * Create a 500 Service Error response.
  *
- * @param {string} [message='Internal server error'] - Error message
+ * @param {string} [message='Service error'] - Error message
  * @returns {Response}
  */
-export function internalError(message = "Internal server error") {
+export function internalError(message = "Service error") {
   return apiErrorResponse(500, "INTERNAL_ERROR", message);
 }

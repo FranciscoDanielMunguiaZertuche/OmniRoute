@@ -23,7 +23,7 @@ import {
 
 /**
  * Build the user-facing error message for a failed Kiro/Amazon-Q token import.
- * The catch previously returned a bare `Internal server error`, which hid the
+ * The catch previously returned a bare `Service error`, which hid the
  * real cause — the failure happens while validating/refreshing the imported
  * refresh token against AWS (e.g. `invalid_grant`, an expired token, or a region
  * mismatch) — so the dashboard only ever showed a generic 500 (#3589). The cause
@@ -34,7 +34,7 @@ import {
  */
 export function buildKiroImportError(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error ?? "");
-  return sanitizeErrorMessage(raw) || "Internal server error";
+  return sanitizeErrorMessage(raw) || "Service error";
 }
 
 async function requireOAuthImportAuth(request: Request) {

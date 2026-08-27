@@ -687,7 +687,7 @@ export default function HomePageClient({ machineId }: HomePageClientProps) {
         if (!res.ok || !data.success) {
           // #5991: the error envelope is `{ error: { code, message, correlation_id } }`.
           // Passing the raw object to notify.error() rendered it as a React child →
-          // "Minified React error #31" crash ("Internal Server Error" screen), e.g. on
+          // "Minified React error #31" crash ("Something went wrong" screen), e.g. on
           // the 403 from the loopback-only /api/system/version. Extract the string.
           notify.error(extractApiErrorMessage(data, "Failed to start update."));
           setUpdating(false);

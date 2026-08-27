@@ -33,7 +33,7 @@ const errorPages = [
   },
   {
     path: "/500",
-    heading: "Internal Server Error",
+    heading: "Something went wrong",
     primaryHref: "/dashboard/health",
     secondaryHref: "/dashboard/logs",
   },

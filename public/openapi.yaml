@@ -4049,7 +4049,7 @@ paths:
         "401":
           description: Unauthorized
         "500":
-          description: Internal server error
+          description: Service error
 
   # ─── Quota Sharing (Group B, plan 22) ────────────────────────────
 
@@ -4071,7 +4071,7 @@ paths:
         "401":
           description: Unauthorized
         "500":
-          description: Internal server error
+          description: Service error
     post:
       tags: [Quota]
       summary: Create quota pool
@@ -4095,7 +4095,7 @@ paths:
         "401":
           description: Unauthorized
         "500":
-          description: Internal server error
+          description: Service error
 
   /api/quota/pools/{id}:
     get:
@@ -4121,7 +4121,7 @@ paths:
         "404":
           description: Pool not found
         "500":
-          description: Internal server error
+          description: Service error
     patch:
       tags: [Quota]
       summary: Update quota pool (name or allocations)
@@ -4149,7 +4149,7 @@ paths:
         "404":
           description: Pool not found
         "500":
-          description: Internal server error
+          description: Service error
     delete:
       tags: [Quota]
       summary: Delete quota pool
@@ -4169,7 +4169,7 @@ paths:
         "404":
           description: Pool not found
         "500":
-          description: Internal server error
+          description: Service error
 
   /api/quota/pools/{id}/usage:
     get:
@@ -4195,7 +4195,7 @@ paths:
         "404":
           description: Pool not found
         "500":
-          description: Internal server error
+          description: Service error
 
   /api/quota/plans:
     get:
@@ -4209,7 +4209,7 @@ paths:
         "401":
           description: Unauthorized
         "500":
-          description: Internal server error
+          description: Service error
 
   /api/quota/plans/{connectionId}:
     get:
@@ -4231,7 +4231,7 @@ paths:
         "404":
           description: Connection not found
         "500":
-          description: Internal server error
+          description: Service error
     put:
       tags: [Quota]
       summary: Upsert manual plan override for a connection
@@ -4257,7 +4257,7 @@ paths:
         "401":
           description: Unauthorized
         "500":
-          description: Internal server error
+          description: Service error
     delete:
       tags: [Quota]
       summary: Delete manual plan override (reverts to catalog/auto)
@@ -4277,7 +4277,7 @@ paths:
         "404":
           description: Override not found
         "500":
-          description: Internal server error
+          description: Service error
 
   /api/quota/preview:
     get:
@@ -4316,7 +4316,7 @@ paths:
         "401":
           description: Unauthorized
         "500":
-          description: Internal server error
+          description: Service error
 
   /api/settings/quota-store:
     get:
@@ -4331,7 +4331,7 @@ paths:
         "401":
           description: Unauthorized
         "500":
-          description: Internal server error
+          description: Service error
     put:
       tags: [Settings]
       summary: Update quota store driver settings
@@ -4351,7 +4351,7 @@ paths:
         "401":
           description: Unauthorized
         "500":
-          description: Internal server error
+          description: Service error
 
   # ─── v1beta (Gemini-Compatible) ─────────────────────────────────
 
@@ -5354,7 +5354,7 @@ components:
             $ref: "#/components/schemas/ApiErrorResponse"
           example:
             error:
-              message: Internal server error
+              message: Service error
               type: api_error
             requestId: 0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d
 

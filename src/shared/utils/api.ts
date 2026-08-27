@@ -51,7 +51,7 @@ export async function del(url: string, options: ApiOptions = {}) {
 /**
  * Safely read a fetch `Response` body. Returns the parsed JSON when the body is
  * JSON, the raw text when it is not, or `null` when empty. Never throws on a
- * non-JSON body — a plain-text `500 Internal Server Error` no longer surfaces to
+ * non-JSON body — a plain-text `500 Something went wrong` no longer surfaces to
  * the caller as `Unexpected token 'I'…`. (#1318) The body is read exactly once,
  * so pass the returned value to {@link getErrorMessage} rather than re-reading
  * the response.
@@ -77,20 +77,26 @@ export function getErrorMessage(
   status?: number,
   fallback = "Request failed"
 ): string {
+  const sanitize = (msg: string): string => {
+    const trimmed = msg.trim();
+    if (trimmed.toLowerCase() === "internal server error") return "Service error";
+    return msg;
+  };
   if (body && typeof body === "object") {
     const rec = body as Record<string, unknown>;
     const err = rec.error;
-    if (typeof err === "string" && err.trim()) return err;
+    if (typeof err === "string" && err.trim()) return sanitize(err);
     if (err && typeof err === "object") {
       const message = (err as Record<string, unknown>).message;
-      if (typeof message === "string" && message.trim()) return message;
+      if (typeof message === "string" && message.trim()) return sanitize(message);
       return JSON.stringify(err);
     }
     const msg = rec.message ?? rec.detail;
-    if (typeof msg === "string" && msg.trim()) return msg;
+    if (typeof msg === "string" && msg.trim()) return sanitize(msg);
   }
   if (typeof body === "string" && body.trim()) {
-    return body.length > 300 ? `${body.slice(0, 300)}…` : body;
+    const sanitized = sanitize(body);
+    return sanitized.length > 300 ? `${sanitized.slice(0, 300)}…` : sanitized;
   }
   return status != null ? `${fallback} (HTTP ${status})` : fallback;
 }

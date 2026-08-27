@@ -35,6 +35,12 @@ export const nvidiaProvider: RegistryEntry = {
     { id: "deepseek-ai/deepseek-v4-flash", name: "DeepSeek V4 Flash", supportsReasoning: true },
     // Sweep 2026-06-19: verified present in the live NVIDIA NIM /v1/models catalog.
     { id: "moonshotai/kimi-k2.6", name: "Kimi K2.6" },
+    {
+      id: "moonshotai/kimi-k3",
+      name: "Kimi K3",
+      supportsReasoning: true,
+      supportsXHighEffort: false,
+    },
     { id: "openai/gpt-oss-120b", name: "GPT OSS 120B", toolCalling: false },
     { id: "openai/gpt-oss-20b", name: "GPT OSS 20B", toolCalling: false },
     { id: "nvidia/nemotron-3-super-120b-a12b", name: "Nemotron 3 Super 120B A12B" },

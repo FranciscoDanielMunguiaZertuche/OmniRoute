@@ -29,6 +29,6 @@ test("#1318: parseResponseBody returns null for an empty body", async () => {
 test("#1318: getErrorMessage handles string-error, nested-error, plain-text and fallback", () => {
   assert.equal(getErrorMessage({ error: "bad key" }), "bad key");
   assert.equal(getErrorMessage({ error: { message: "expired" } }), "expired");
-  assert.equal(getErrorMessage("Internal Server Error"), "Internal Server Error");
+  assert.equal(getErrorMessage("Internal Server Error"), "Service error");
   assert.equal(getErrorMessage(null, 500, "Save failed"), "Save failed (HTTP 500)");
 });

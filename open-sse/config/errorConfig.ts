@@ -46,7 +46,7 @@ export const DEFAULT_ERROR_MESSAGES: Record<number, string> = {
   406: "Model not supported",
   429: "Rate limit exceeded",
   499: "Client disconnected",
-  500: "Internal server error",
+  500: "Service error",
   502: "Bad gateway - upstream provider error",
   503: "Service temporarily unavailable",
   504: "Gateway timeout",

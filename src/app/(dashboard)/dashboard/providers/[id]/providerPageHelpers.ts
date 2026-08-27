@@ -864,6 +864,7 @@ export async function formatProviderModelsErrorResponse(res: Response): Promise<
     /* ignore */
   }
   const st = res.statusText?.trim();
+  if (st && st.toLowerCase() === "internal server error") return "Service error";
   return st || `HTTP ${res.status}`;
 }
 

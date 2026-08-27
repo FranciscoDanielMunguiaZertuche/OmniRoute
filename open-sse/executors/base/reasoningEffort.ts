@@ -152,10 +152,23 @@ export function supportsMaxEffortForProvider(provider: string, model: string): b
   // low|medium|high|max|none) and rejects xhigh.
   const isOpencodeGoDeepSeek =
     provider === "opencode-go" && model.toLowerCase().includes("deepseek");
+  // Ox Alpha Free (x-preview-f-free) on opencode-zen accepts literal
+  // {low|high|max} and rejects xhigh with upstream "[1210] This model always
+  // engages in thinking and cannot be disabled; please use low, high, or max".
+  // Same native-max contract as the opencode-go DeepSeek opt-in above.
+  const isOpencodeZenOxAlpha =
+    provider === "opencode-zen" && model.toLowerCase().includes("x-preview-f-free");
   const isOllamaCloud = provider === "ollama-cloud";
-  const isMoonshotK3 =
-    (provider === "moonshot" || provider === "kimi") && /^kimi-k3(?:$|-)/i.test(model);
-  return isClaude || isOpencodeGoDeepSeek || isOllamaCloud || isMoonshotK3;
+  const isKimiK3 = /kimi[-_.]?k3/i.test(model);
+  const isAgentRouterGlm = provider === "agentrouter" && model.toLowerCase().includes("glm");
+  return (
+    isClaude ||
+    isOpencodeGoDeepSeek ||
+    isOllamaCloud ||
+    isKimiK3 ||
+    isOpencodeZenOxAlpha ||
+    isAgentRouterGlm
+  );
 }
 
 // ── Effort carrier helpers (#7044) ──────────────────────────────────────────
@@ -285,11 +298,19 @@ export function sanitizeReasoningEffortForProvider(
     }
     return body;
   }
-
   const supportsXHigh = supportsXHighEffort(provider, modelStr);
+  const supportsMax = supportsMaxEffortForProvider(provider, modelStr);
+
+  if (effortStr === "xhigh" && supportsMax && !supportsXHigh) {
+    log?.info?.(
+      "REASONING_SANITIZE",
+      `${provider}/${modelStr}: normalized reasoning_effort xhigh → max`
+    );
+    return writeEffortValue(b, "max", c);
+  }
+
   const shouldDowngradeXHigh = effortStr === "xhigh" && !supportsXHigh;
   const supportsXHighForMax = supportsXHigh;
-  const supportsMax = supportsMaxEffortForProvider(provider, modelStr);
   const shouldNormalizeMaxToXHigh = effortStr === "max" && !supportsMax && supportsXHighForMax;
   const shouldDowngradeMax = effortStr === "max" && !supportsMax && !supportsXHighForMax;
 

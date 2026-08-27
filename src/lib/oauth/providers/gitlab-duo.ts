@@ -28,7 +28,7 @@ export const gitlabDuo = {
     // #3861: GitLab Duo needs an operator-registered OAuth client_id. When it is
     // missing, return null (mirroring the Qoder provider) so the route can surface a
     // clear "configure it" message instead of letting the throw bubble up as an
-    // opaque "Internal server error" 500 at the Add Connection step.
+    // opaque "Service error" 500 at the Add Connection step.
     if (!config.clientId) {
       return null;
     }

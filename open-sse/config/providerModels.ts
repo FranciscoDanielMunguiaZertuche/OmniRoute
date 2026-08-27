@@ -12,27 +12,27 @@ export const PROVIDER_MODELS: Record<string, RegistryModel[]> = new Proxy(
   {} as Record<string, RegistryModel[]>,
   {
     get(_, prop) {
-      if (typeof prop === 'symbol') return undefined;
+      if (typeof prop === "symbol") return undefined;
       return Reflect.get(initModels(), prop, _models);
     },
     has(_, prop) {
-      if (typeof prop === 'symbol') return false;
+      if (typeof prop === "symbol") return false;
       return Reflect.has(initModels(), prop);
     },
     ownKeys() {
       return Reflect.ownKeys(initModels());
     },
     getOwnPropertyDescriptor(_, prop) {
-      if (typeof prop === 'symbol') return undefined;
+      if (typeof prop === "symbol") return undefined;
       return Object.getOwnPropertyDescriptor(initModels(), prop);
     },
     set(_, prop, value) {
-      if (typeof prop === 'symbol') return false;
+      if (typeof prop === "symbol") return false;
       (initModels() as Record<string, RegistryModel[]>)[prop] = value;
       return true;
     },
     deleteProperty(_, prop) {
-      if (typeof prop === 'symbol') return false;
+      if (typeof prop === "symbol") return false;
       return Reflect.deleteProperty(initModels(), prop);
     },
   }
@@ -41,27 +41,27 @@ export const PROVIDER_ID_TO_ALIAS: Record<string, string> = new Proxy(
   {} as Record<string, string>,
   {
     get(_, prop) {
-      if (typeof prop === 'symbol') return undefined;
+      if (typeof prop === "symbol") return undefined;
       return Reflect.get(initAliases(), prop, _aliases);
     },
     has(_, prop) {
-      if (typeof prop === 'symbol') return false;
+      if (typeof prop === "symbol") return false;
       return Reflect.has(initAliases(), prop);
     },
     ownKeys() {
       return Reflect.ownKeys(initAliases());
     },
     getOwnPropertyDescriptor(_, prop) {
-      if (typeof prop === 'symbol') return undefined;
+      if (typeof prop === "symbol") return undefined;
       return Object.getOwnPropertyDescriptor(initAliases(), prop);
     },
     set(_, prop, value) {
-      if (typeof prop === 'symbol') return false;
+      if (typeof prop === "symbol") return false;
       (initAliases() as Record<string, string>)[prop] = value;
       return true;
     },
     deleteProperty(_, prop) {
-      if (typeof prop === 'symbol') return false;
+      if (typeof prop === "symbol") return false;
       return Reflect.deleteProperty(initAliases(), prop);
     },
   }
@@ -255,6 +255,13 @@ function resolveProviderModelList(aliasOrId: string): {
 }
 
 export function supportsXHighEffort(aliasOrId: string, modelId: string): boolean {
+  // Kimi K3 only supports low/high/max — xhigh is explicitly unsupported on every
+  // provider that serves it (moonshot, nvidia, etc). The nvidia registry entry
+  // lacked an explicit supportsXHighEffort:false, so it defaulted to true and
+  // prevented xhigh→max normalization, leaving xhigh to be rejected as
+  // thinking_effort="xhigh". Force false for any kimi-k3 model id.
+  if (/kimi[-_.]?k3/i.test(modelId)) return false;
+
   const { models: providerModels } = resolveProviderModelList(aliasOrId);
   const model = providerModels?.find((entry) => entry.id === modelId);
   if (model?.supportsXHighEffort !== undefined) {

@@ -455,7 +455,7 @@ export async function runWithProxyContext(
  *
  * For control-plane flows — OAuth code/token exchange, connection tests, token refresh —
  * where a dead pinned proxy must not block reaching the upstream (it otherwise surfaces
- * as a generic "Internal server error"). Data-plane chat keeps strict pinning via
+ * as a generic "Service error"). Data-plane chat keeps strict pinning via
  * runWithProxyContext so per-account egress-IP isolation is preserved.
  *
  * This remains disabled unless OMNIROUTE_CONTROL_PLANE_PROXY_DIRECT_FALLBACK is enabled

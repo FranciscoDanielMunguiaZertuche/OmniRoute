@@ -51,6 +51,6 @@ export async function GET(request) {
     });
   } catch (error) {
     console.error("Kiro social authorize error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Service error" }, { status: 500 });
   }
 }

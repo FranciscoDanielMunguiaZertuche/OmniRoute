@@ -32,7 +32,7 @@ test.after(() => {
 test("surfaces the real AWS cause (invalid_grant) instead of a generic 500", () => {
   const msg = buildKiroImportError(new Error("invalid_grant"));
   assert.match(msg, /invalid_grant/);
-  assert.notEqual(msg, "Internal server error");
+  assert.notEqual(msg, "Service error");
 });
 
 test("surfaces a region-mismatch cause", () => {
@@ -53,6 +53,6 @@ test("never leaks a stack trace in the surfaced message", () => {
 });
 
 test("falls back to the generic message when there is nothing to report", () => {
-  assert.equal(buildKiroImportError(new Error("")), "Internal server error");
-  assert.equal(buildKiroImportError(undefined), "Internal server error");
+  assert.equal(buildKiroImportError(new Error("")), "Service error");
+  assert.equal(buildKiroImportError(undefined), "Service error");
 });

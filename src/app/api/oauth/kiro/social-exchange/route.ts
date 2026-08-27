@@ -134,7 +134,7 @@ export async function POST(request: Request) {
     });
   } catch (error: any) {
     console.error("Kiro social exchange error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Service error" }, { status: 500 });
   }
 }
 

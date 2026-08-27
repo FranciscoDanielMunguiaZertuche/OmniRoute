@@ -108,7 +108,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       {
         error:
           sanitizeErrorMessage(error instanceof Error ? error.message : "Unknown error") ||
-          "Internal server error",
+          "Service error",
       },
       { status: 500, headers: getCloudAgentCorsHeaders(request) }
     );
@@ -188,7 +188,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       {
         error:
           sanitizeErrorMessage(error instanceof Error ? error.message : "Unknown error") ||
-          "Internal server error",
+          "Service error",
       },
       { status: 500, headers: getCloudAgentCorsHeaders(request) }
     );
@@ -220,7 +220,7 @@ export async function DELETE(
       {
         error:
           sanitizeErrorMessage(error instanceof Error ? error.message : "Unknown error") ||
-          "Internal server error",
+          "Service error",
       },
       { status: 500, headers: getCloudAgentCorsHeaders(request) }
     );

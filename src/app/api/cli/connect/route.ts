@@ -151,6 +151,6 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("[CLI] connect failed:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Service error" }, { status: 500 });
   }
 }

@@ -26,7 +26,7 @@ test("OAuth GET catch surfaces the sanitized upstream reason, not a bare generic
   );
   assert.match(
     route,
-    /error:\s*detail\s*\|\|\s*"Internal server error"/,
+    /error:\s*detail\s*\|\|\s*"Service error"/,
     "the GET catch must return the sanitized detail (falling back to the generic only when empty)"
   );
 });

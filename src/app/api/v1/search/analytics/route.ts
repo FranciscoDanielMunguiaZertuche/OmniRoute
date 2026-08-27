@@ -56,6 +56,6 @@ export async function GET(req: Request) {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[/api/v1/search/analytics]", msg);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Service error" }, { status: 500 });
   }
 }

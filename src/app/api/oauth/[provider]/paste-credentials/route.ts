@@ -85,6 +85,6 @@ export async function POST(
     });
   } catch (error) {
     console.error("OAuth paste-credentials error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Service error" }, { status: 500 });
   }
 }

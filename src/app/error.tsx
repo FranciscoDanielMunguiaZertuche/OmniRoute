@@ -23,7 +23,7 @@ export default function Error({ error, reset }: ErrorProps) {
         🔧
       </div>
       <h1 className="text-[28px] font-bold mb-2 text-[var(--color-text-main)]">
-        Internal Server Error
+        Something went wrong
       </h1>
       <p className="text-[15px] text-[var(--color-text-muted)] max-w-[400px] leading-relaxed mb-2">
         Something went wrong while processing your request. Our team has been notified and is

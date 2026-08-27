@@ -281,7 +281,7 @@ export async function GET(
     // message ("Device code request failed: …", "CodeBuddy state request failed (403)") that was being
     // swallowed, so a geo-block / upstream outage looked identical to a real server bug in the UI.
     const detail = sanitizeErrorMessage(error instanceof Error ? error.message : String(error));
-    return NextResponse.json({ error: detail || "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: detail || "Service error" }, { status: 500 });
   }
 }
 
@@ -370,7 +370,7 @@ async function handleStartCallbackServer(
     });
   } catch (error) {
     console.error("OAuth start-callback-server error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Service error" }, { status: 500 });
   }
 }
 
@@ -788,10 +788,7 @@ export async function POST(
         });
       } catch (exchangeErr: any) {
         console.error("OAuth exchange error:", exchangeErr);
-        return NextResponse.json(
-          { success: false, error: "Internal server error" },
-          { status: 500 }
-        );
+        return NextResponse.json({ success: false, error: "Service error" }, { status: 500 });
       }
     }
 
@@ -943,7 +940,7 @@ export async function POST(
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (error) {
     console.error("OAuth POST error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Service error" }, { status: 500 });
   }
 }
 
