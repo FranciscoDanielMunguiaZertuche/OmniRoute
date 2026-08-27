@@ -1,1 +1,0 @@
-- **chore(assets):** remove four unused provider assets whose redistribution provenance could not be verified; the active Freebuff SVG remains bundled
