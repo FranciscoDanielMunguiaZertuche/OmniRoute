@@ -12,6 +12,7 @@
 <br/>
 
 <a id="-omniroute"></a>
+
 # 🚀 OmniRoute — Il Gateway AI Gratuito
 
 <img src="../../diagrams/readme-hero.svg" width="100%" alt="OmniRoute — Non smettere mai di programmare. Ogni strumento AI → 349 provider — oltre 90 gratuiti — tramite un unico endpoint. Collega Claude Code, Codex, Cursor, Cline, Copilot e Antigravity a Claude / GPT / Gemini GRATUITI con fallback automatico. La compressione combinata RTK + Caveman riduce i token del 15–95% (~89% in media) — per non raggiungere i limiti. 350 provider AI · oltre 90 tier gratuiti · ~1,51 miliardi di token gratuiti/mese · 19 strategie di routing · $0 per iniziare."/>
@@ -68,14 +69,14 @@
 
 <div align="center">
 
-|                           | v3.8.49 | **v3.8.50** | `v3.8.51+`        |
-| ------------------------- | :-----: | :---------: | :---------------: |
-| 🌐 Provider               |   290   |   **342**   | altri in arrivo   |
-| 🧠 Modelli documentati    |  1185   |  **1202**   |         —         |
-| 🖼️ Modality Bridge        |    —    |  🆕 vision  |       video       |
-| 📡 Catalogo gratuito Radar|    —    |  🆕 opt-in  |         —         |
-| ⚖️ Scheduling quota-aware |    —    |      —      |   🔭 prossimamente|
-| 📊 Telemetria delle quote |    —    |      —      |   🔭 prossimamente|
+|                            | v3.8.49 | **v3.8.50** |    `v3.8.51+`    |
+| -------------------------- | :-----: | :---------: | :--------------: |
+| 🌐 Provider                |   290   |   **342**   | altri in arrivo  |
+| 🧠 Modelli documentati     |  1185   |  **1202**   |        —         |
+| 🖼️ Modality Bridge         |    —    |  🆕 vision  |      video       |
+| 📡 Catalogo gratuito Radar |    —    |  🆕 opt-in  |        —         |
+| ⚖️ Scheduling quota-aware  |    —    |      —      | 🔭 prossimamente |
+| 📊 Telemetria delle quote  |    —    |      —      | 🔭 prossimamente |
 
 **→ [Roadmap](../../../ROADMAP.md) — verso `v3.9.0 LTS`**
 
@@ -193,6 +194,7 @@
 <div align="center">
 
 <a id="-works-the-second-you-install-it--no-keys-no-config"></a>
+
 ## 🆓 Funziona subito dopo l'installazione — nessuna chiave, nessuna configurazione
 
 </div>
@@ -215,6 +217,7 @@ curl http://localhost:20128/v1/chat/completions \
 <div align="center">
 
 <a id="-the-promise"></a>
+
 # 💥 La promessa
 
 </div>
@@ -227,6 +230,7 @@ curl http://localhost:20128/v1/chat/completions \
 <div align="center">
 
 <a id="-why-omniroute"></a>
+
 # 🤔 Perché OmniRoute?
 
 </div>
@@ -276,7 +280,7 @@ curl http://localhost:20128/v1/chat/completions \
   <tr>
     <td align="center" width="150">
       <a href="https://cheaperinference.com/?utm_source=omniroute">
-        <img src="../../../public/providers/cheaperinference.svg" width="64" alt="Cheaper Inference"/>
+        <img src="../../../public/providers/cli-generic.svg" width="64" alt="Cheaper Inference"/>
       </a>
       <br/><b>Cheaper Inference</b><br/><sub>cheaperinference.com</sub><br/><br/>
       <img src="https://img.shields.io/badge/Open_Source_Friend-31f889?style=flat-square&labelColor=04170d" alt="Open Source Friend"/>
@@ -302,7 +306,7 @@ curl http://localhost:20128/v1/chat/completions \
   <tr>
     <td align="center" width="120">
       <a href="https://agentrouter.org/register?aff=70LM">
-        <img src="../../../public/providers/agentrouter.png" width="32" alt="AgentRouter"/>
+        <img src="../../../public/providers/cli-generic.svg" width="32" alt="AgentRouter"/>
       </a>
       <br/><sub><b>AgentRouter</b></sub><br/><sub>agentrouter.org</sub>
     </td>
@@ -323,6 +327,7 @@ curl http://localhost:20128/v1/chat/completions \
 <div align="center">
 
 <a id="-combos--the-flagship"></a>
+
 ## 🎯 Combo — La funzionalità di punta
 
 </div>
@@ -393,6 +398,7 @@ Tutte e **19** le strategie — combinabili liberamente per ogni passaggio della
 <div align="center">
 
 <a id="-what-sets-omniroute-apart"></a>
+
 ## 🏆 Cosa distingue OmniRoute
 
 </div>
@@ -404,6 +410,7 @@ Tutte e **19** le strategie — combinabili liberamente per ogni passaggio della
 <br/>
 
 <a id="-support-omniroute"></a>
+
 ## 💚 Supporta OmniRoute
 
 OmniRoute è distribuito con licenza MIT e mantenuto apertamente. Se ti fa risparmiare tempo o denaro, ecco come aiutarlo a restare indipendente — scegli ciò che preferisci. Le sponsorizzazioni non influenzano mai la priorità del routing: acquistano visibilità, non posizionamento.
@@ -465,6 +472,7 @@ Radar è opt-in e usa soltanto richieste GET. Il client OmniRoute non carica pro
 <div align="center">
 
 <a id="-whats-new"></a>
+
 ## ✨ Novità
 
 </div>
@@ -497,6 +505,7 @@ Radar è opt-in e usa soltanto richieste GET. Il client OmniRoute non carica pro
 <div align="center">
 
 <a id="-compatible-clis--coding-agents"></a>
+
 ## 🤖 CLI e agenti di coding compatibili
 
 > Una sola configurazione — `http://localhost:20128/v1` — e **qualsiasi** IDE o CLI AI può usare modelli gratuiti e a basso costo.
@@ -507,7 +516,7 @@ Radar è opt-in e usa soltanto richieste GET. Il client OmniRoute non carica pro
     <td align="center" width="76"><a href="https://github.com/anthropics/claude-code"><img src="../../../public/providers/claude.svg" width="40" alt="Claude Code"/><br/><sub><b>Claude Code</b></sub><br/><sub>                           </sub></a></td>
     <td align="center" width="76"><a href="https://github.com/openai/codex"><img src="../../../public/providers/codex.svg" width="40" alt="Codex CLI"/><br/><sub><b>Codex CLI</b></sub><br/><sub>                           </sub></a></td>
     <td align="center" width="76"><picture><source media="(prefers-color-scheme:dark)" srcset="https://cdn.jsdelivr.net/npm/@lobehub/icons-static-png@1.91.0/dark/cline.png"/><img src="https://cdn.jsdelivr.net/npm/@lobehub/icons-static-svg@1.91.0/icons/cline.svg" width="40" alt="Cline"/></picture><br/><sub><b>Cline</b></sub><br/><sub>                           </sub></td>
-    <td align="center" width="76"><a href="https://github.com/Kilo-Org/kilocode"><img src="../../../public/providers/kilocode.svg" width="40" alt="Kilo Code"/><br/><sub><b>Kilo Code</b></sub><br/><sub>                           </sub></a></td>
+    <td align="center" width="76"><a href="https://github.com/Kilo-Org/kilocode"><img src="../../../public/providers/cli-generic.svg" width="40" alt="Kilo Code"/><br/><sub><b>Kilo Code</b></sub><br/><sub>                           </sub></a></td>
     <td align="center" width="76"><a href="https://github.com/Zoo-Code-Org/Zoo-Code"><img src="../../../public/providers/zoocode.png" width="40" alt="Zoo Code"/><br/><sub><b>Zoo Code</b></sub><br/><sub>                           </sub></a></td>
     <td align="center" width="76"><img src="../../../public/providers/continue.svg" width="40" alt="Continue"/><br/><sub><b>Continue</b></sub><br/><sub>                           </sub></td>
   </tr>
@@ -517,10 +526,10 @@ Radar è opt-in e usa soltanto richieste GET. Il client OmniRoute non carica pro
     <td align="center" width="76"><img src="../../../public/providers/cli-generic.svg" width="40" alt="jcode"/><br/><sub><b>jcode</b></sub><br/><sub>                           </sub></td>
     <td align="center" width="76"><img src="../../../public/providers/deepseek.svg" width="40" alt="DeepSeek TUI"/><br/><sub><b>DeepSeek TUI</b></sub><br/><sub>                           </sub></td>
     <td align="center" width="76"><img src="../../../public/providers/cli-generic.svg" width="40" alt="CodeWhale"/><br/><sub><b>CodeWhale</b></sub><br/><sub>                           </sub></td>
-    <td align="center" width="76"><a href="https://github.com/anomalyco/opencode"><picture><source media="(prefers-color-scheme:dark)" srcset="https://cdn.jsdelivr.net/npm/@lobehub/icons-static-png@1.91.0/dark/opencode.png"/><img src="https://cdn.jsdelivr.net/npm/@lobehub/icons-static-svg@1.91.0/icons/opencode.svg" width="40" alt="OpenCode"/></picture><br/><sub><b>OpenCode</b></sub><br/><sub>                           </sub></a></td>
+    <td align="center" width="76"><a href="https://github.com/anomalyco/opencode"><img src="../../../public/providers/cli-generic.svg" width="40" alt="OpenCode"/><br/><sub><b>OpenCode</b></sub><br/><sub>                           </sub></a></td>
   </tr>
   <tr>
-    <td align="center" width="76"><img src="../../../public/providers/droid.svg" width="40" alt="Factory Droid"/><br/><sub><b>Factory Droid</b></sub><br/><sub>                           </sub></td>
+    <td align="center" width="76"><img src="../../../public/providers/cli-generic.svg" width="40" alt="Factory Droid"/><br/><sub><b>Factory Droid</b></sub><br/><sub>                           </sub></td>
     <td align="center" width="76"><img src="../../../public/providers/copilot.svg" width="40" alt="GitHub Copilot CLI"/><br/><sub><b>Copilot CLI</b></sub><br/><sub>                           </sub></td>
     <td align="center" width="76"><img src="../../../public/providers/cursor.svg" width="40" alt="Cursor CLI"/><br/><sub><b>Cursor CLI</b></sub><br/><sub>                           </sub></td>
     <td align="center" width="76"><img src="../../../public/providers/cli-generic.svg" width="40" alt="Smelt"/><br/><sub><b>Smelt</b></sub><br/><sub>                           </sub></td>
@@ -618,8 +627,8 @@ finiscano nella cronologia della shell. → [Integrazioni CLI](../../guides/CLI-
 
 <table>
   <tr>
-    <td align="center" width="150"><img src="../../../public/providers/opencode.svg" width="42" alt="OpenCode Zen"/><br/><b>OpenCode Zen</b><br/><sub>DeepSeek V4, Nemotron 3<br/>Nessun limite di token</sub></td>
-    <td align="center" width="150"><img src="../../../public/providers/kilocode.svg" width="42" alt="Kilo Code"/><br/><b>Kilo Code</b><br/><sub>Auto-router, Tencent Hy3<br/>Gratuito per sempre</sub></td>
+    <td align="center" width="150"><img src="../../../public/providers/cli-generic.svg" width="42" alt="OpenCode Zen"/><br/><b>OpenCode Zen</b><br/><sub>DeepSeek V4, Nemotron 3<br/>Nessun limite di token</sub></td>
+    <td align="center" width="150"><img src="../../../public/providers/cli-generic.svg" width="42" alt="Kilo Code"/><br/><b>Kilo Code</b><br/><sub>Auto-router, Tencent Hy3<br/>Gratuito per sempre</sub></td>
     <td align="center" width="150"><img src="../../../public/providers/requesty.svg" width="42" alt="Requesty"/><br/><b>Requesty</b><br/><sub>GPT-OSS 120B, Nemotron<br/>Gratuito per sempre</sub></td>
     <td align="center" width="150"><img src="https://cdn.jsdelivr.net/npm/@lobehub/icons-static-svg@1.91.0/icons/siliconcloud-color.svg" width="42" alt="SiliconFlow"/><br/><b>SiliconFlow</b><br/><sub>DeepSeek V3.2 / R1<br/>Piano gratuito</sub></td>
     <td align="center" width="150"><img src="../../../public/providers/zhipu.svg" width="42" alt="Z.AI GLM"/><br/><b>Z.AI GLM</b><br/><sub>GLM-4.7 / 4.5-Flash<br/>Gratuito per sempre</sub></td>
@@ -915,6 +924,7 @@ Usali solo con client che non possono aggiungere `Authorization: Bearer ...`. L'
 <br/>
 
 <a id="-more-install-methods--docker-source-pnpm-arch"></a>
+
 ## 📦 Altri metodi di installazione — Docker, sorgente, pnpm, Arch
 
 **🐳 Docker**
@@ -926,11 +936,11 @@ docker run -d --name omniroute --restart unless-stopped --stop-timeout 40 \
 
 `:latest` segue la versione SemVer stabile **pubblicata** più alta. Non segue il branch git `main`. Per GitOps, fissa `:X.Y.Z`. Vedi [Canali di release Docker](../../guides/DOCKER_GUIDE.md#release-channels). L'immagine imposta **`OMNIROUTE_MEMORY_MB=1024`**. È sufficiente per la dashboard e una chat leggera. I **coding agent** (`POST /v1/responses` da Claude Code, Codex, Grok, …) richiedono un heap V8 molto più grande, altrimenti il processo va in `FATAL ERROR` a ~12 GiB con due contesti lunghi sovrapposti. Dimensiona il container oltre l'heap (i buffer nativi si trovano fuori da V8):
 
-| Carico di lavoro                    | Heap (`-e OMNIROUTE_MEMORY_MB`) | Container (`--memory`) |
-| ----------------------------------- | ------------------------------- | ---------------------- |
-| Dashboard / chat leggera            | `1024` (predefinito immagine)   | ≥2 g                   |
-| Un coding agent                     | `8192`                          | ≥10 g                  |
-| Due `/v1/responses` lunghe simultanee | `10240`–`12288`               | ≥12–16 g               |
+| Carico di lavoro                      | Heap (`-e OMNIROUTE_MEMORY_MB`) | Container (`--memory`) |
+| ------------------------------------- | ------------------------------- | ---------------------- |
+| Dashboard / chat leggera              | `1024` (predefinito immagine)   | ≥2 g                   |
+| Un coding agent                       | `8192`                          | ≥10 g                  |
+| Due `/v1/responses` lunghe simultanee | `10240`–`12288`                 | ≥12–16 g               |
 
 ```bash
 docker run -d --name omniroute --restart unless-stopped --stop-timeout 40 \
@@ -949,6 +959,7 @@ Tabella completa: [Guida Docker — RAM di runtime](../../guides/DOCKER_GUIDE.md
 **🥟 Bun**
 
 Sono supportati `bun install` standard e l'installazione globale (`bun install -g omniroute`) tramite rilevamento del runtime Bun:
+
 - **`bun:sqlite` integrato**: OmniRoute usa il driver integrato `bun:sqlite` quando gira con Bun, con fallback a `better-sqlite3` su Node.js o a `sql.js`.
 - **Selezione automatica del bundler Webpack**: sviluppo (`bun run dev`) e build di produzione (`bun run build`) rilevano automaticamente Bun e disabilitano Turbopack a favore di Webpack per evitare incompatibilità dei binding V8 nativi.
 - **Dockerfile Bun dedicato**: `Dockerfile.bun` multi-stage per deployment di produzione nativi Bun (`docker build -f Dockerfile.bun -t omniroute:bun .`).
@@ -1109,19 +1120,19 @@ Metriche di validazione: 1002 video monitorati · 7,069,190 visualizzazioni note
 
 > Tutto in un unico posto — segui il maintainer, parla con la community oppure apri una issue.
 
-| Canale                                     | Dove / come                                                                                                                |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| 💼 **LinkedIn** — segui il maintainer      | [linkedin.com/in/diegosouzapw](https://www.linkedin.com/in/diegosouzapw/)                                                  |
-| 🐙 **GitHub** — segui release e suggerimenti | [@diegosouzapw](https://github.com/diegosouzapw)                                                                         |
-| 💬 **Discord**                             | [discord.gg/U47eFqAXCn](https://discord.gg/U47eFqAXCn)                                                                     |
-| ✈️ **Telegram**                            | [t.me/omnirouteOficial](https://t.me/omnirouteOficial)                                                                     |
-| 🟢 **WhatsApp — 🌍 Global**                | [entra nel gruppo](https://chat.whatsapp.com/JI7cDQ1GyaiDHhVBpLxf8b?mode=gi_t)                                            |
-| 🟢 **WhatsApp — 🇧🇷 Brasil**                | [entra nel gruppo](https://chat.whatsapp.com/LTSpdFhXTxjH4R6CCNiKWz)                                                     |
-| 🌍 **Sito web**                            | [omniroute.online](https://omniroute.online)                                                                               |
-| 📦 **Codice sorgente**                     | [github.com/diegosouzapw/OmniRoute](https://github.com/diegosouzapw/OmniRoute)                                             |
-| 🐛 **Segnala un bug**                      | [apri una issue](https://github.com/diegosouzapw/OmniRoute/issues) — allega l'output di `npm run system-info`              |
-| 🤝 **Contribuisci**                        | [CONTRIBUTING.md](../../../CONTRIBUTING.md) · [Modello di branching e release](../../ops/BRANCHING_MODEL.md) · scegli una `good first issue` |
-| 💚 **Sostieni il progetto**                | [Modi per sostenere ↑](#-support-omniroute) · [GitHub Sponsors](https://github.com/sponsors/diegosouzapw)                   |
+| Canale                                       | Dove / come                                                                                                                                  |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| 💼 **LinkedIn** — segui il maintainer        | [linkedin.com/in/diegosouzapw](https://www.linkedin.com/in/diegosouzapw/)                                                                    |
+| 🐙 **GitHub** — segui release e suggerimenti | [@diegosouzapw](https://github.com/diegosouzapw)                                                                                             |
+| 💬 **Discord**                               | [discord.gg/U47eFqAXCn](https://discord.gg/U47eFqAXCn)                                                                                       |
+| ✈️ **Telegram**                              | [t.me/omnirouteOficial](https://t.me/omnirouteOficial)                                                                                       |
+| 🟢 **WhatsApp — 🌍 Global**                  | [entra nel gruppo](https://chat.whatsapp.com/JI7cDQ1GyaiDHhVBpLxf8b?mode=gi_t)                                                               |
+| 🟢 **WhatsApp — 🇧🇷 Brasil**                  | [entra nel gruppo](https://chat.whatsapp.com/LTSpdFhXTxjH4R6CCNiKWz)                                                                         |
+| 🌍 **Sito web**                              | [omniroute.online](https://omniroute.online)                                                                                                 |
+| 📦 **Codice sorgente**                       | [github.com/diegosouzapw/OmniRoute](https://github.com/diegosouzapw/OmniRoute)                                                               |
+| 🐛 **Segnala un bug**                        | [apri una issue](https://github.com/diegosouzapw/OmniRoute/issues) — allega l'output di `npm run system-info`                                |
+| 🤝 **Contribuisci**                          | [CONTRIBUTING.md](../../../CONTRIBUTING.md) · [Modello di branching e release](../../ops/BRANCHING_MODEL.md) · scegli una `good first issue` |
+| 💚 **Sostieni il progetto**                  | [Modi per sostenere ↑](#-support-omniroute) · [GitHub Sponsors](https://github.com/sponsors/diegosouzapw)                                    |
 
 </div>
 
@@ -1131,6 +1142,7 @@ Metriche di validazione: 1002 video monitorati · 7,069,190 visualizzazioni note
 <div align="center">
 
 <a id="-tech-stack"></a>
+
 ## 🛠️ Stack tecnologico
 
 </div>
@@ -1161,6 +1173,7 @@ Metriche di validazione: 1002 video monitorati · 7,069,190 visualizzazioni note
 <br/>
 
 <a id="-documentation"></a>
+
 ## 📖 Documentazione
 
 </div>
@@ -1338,6 +1351,7 @@ Metriche di validazione: 1002 video monitorati · 7,069,190 visualizzazioni note
 <br/>
 
 <a id="-sponsors"></a>
+
 ## 💖 Sponsor
 
 <div align="center">

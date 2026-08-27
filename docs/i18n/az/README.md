@@ -93,7 +93,7 @@ _Connect any AI-powered IDE or CLI tool through OmniRoute — free-access AI gat
       </td>
       <td align="center" width="110">
         <a href="https://github.com/HKUDS/nanobot">
-          <img src="./public/providers/nanobot.png" alt="NanoBot" width="48"/><br/>
+          <img src="../../../public/providers/cli-generic.svg" alt="NanoBot" width="48"/><br/>
           <b>NanoBot</b>
         </a><br/>
         <sub>⭐ 20.9K</sub>
@@ -107,14 +107,14 @@ _Connect any AI-powered IDE or CLI tool through OmniRoute — free-access AI gat
       </td>
       <td align="center" width="110">
         <a href="https://github.com/zeroclaw-labs/zeroclaw">
-          <img src="./public/providers/zeroclaw.png" alt="ZeroClaw" width="48"/><br/>
+          <img src="../../../public/providers/cli-generic.svg" alt="ZeroClaw" width="48"/><br/>
           <b>ZeroClaw</b>
         </a><br/>
         <sub>⭐ 9.9K</sub>
       </td>
       <td align="center" width="110">
         <a href="https://github.com/nearai/ironclaw">
-          <img src="./public/providers/ironclaw.png" alt="IronClaw" width="48"/><br/>
+          <img src="../../../public/providers/cli-generic.svg" alt="IronClaw" width="48"/><br/>
           <b>IronClaw</b>
         </a><br/>
         <sub>⭐ 2.1K</sub>
@@ -123,7 +123,7 @@ _Connect any AI-powered IDE or CLI tool through OmniRoute — free-access AI gat
     <tr>
       <td align="center" width="110">
         <a href="https://github.com/anomalyco/opencode">
-          <img src="./public/providers/opencode.svg" alt="OpenCode" width="48"/><br/>
+          <img src="../../../public/providers/cli-generic.svg" alt="OpenCode" width="48"/><br/>
           <b>OpenCode</b>
         </a><br/>
         <sub>⭐ 106K</sub>
@@ -144,7 +144,7 @@ _Connect any AI-powered IDE or CLI tool through OmniRoute — free-access AI gat
       </td>
       <td align="center" width="110">
         <a href="https://github.com/Kilo-Org/kilocode">
-          <img src="./public/providers/kilocode.svg" alt="Kilo Code" width="48"/><br/>
+          <img src="../../../public/providers/cli-generic.svg" alt="Kilo Code" width="48"/><br/>
           <b>Kilo Code</b>
         </a><br/>
         <sub>⭐ 15.5K</sub>
@@ -736,12 +736,12 @@ Outcome: deep fallback depth for deadline-critical workloads
 
 > Setup AI coding in minutes at **$0/month**. Connect these free accounts and use the built-in **Free Stack** combo.
 
-| Step | Action                                             | Providers Unlocked                                                 |
-| ---- | -------------------------------------------------- | ------------------------------------------------------------------ |
+| Step | Action                                             | Providers Unlocked                                                                 |
+| ---- | -------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | 1    | Connect **Kiro** (AWS Builder ID OAuth)            | Claude Sonnet 4.5, Haiku 4.5 — provider/account limits apply                       |
 | 2    | Connect **Qoder** (Google OAuth)                   | kimi-k2-thinking, qwen3-coder-plus, deepseek-r1... — provider/account limits apply |
 | 3    | Connect **Qwen** (Device Code)                     | qwen3-coder-plus, qwen3-coder-flash... — provider/account limits apply             |
-| 4    | `/dashboard/combos` → **Free Stack ($0)** template | Round-robin all free providers automatically                       |
+| 4    | `/dashboard/combos` → **Free Stack ($0)** template | Round-robin all free providers automatically                                       |
 
 **Point any IDE/CLI to:** `http://localhost:20128/v1` · API Key: `any-string` · Done.
 
@@ -1192,16 +1192,16 @@ Cerebras (cerebras/)   → Llama/Qwen world-fastest — 1M tok/day
 
 ### 🔵 CLAUDE MODELS (via Kiro — AWS Builder ID)
 
-| Model               | Prefix | Limit         | Rate Limit            |
-| ------------------- | ------ | ------------- | --------------------- |
-| `claude-sonnet-4.5` | `kr/`  | No published token cap | Provider/account limits may apply |
-| `claude-haiku-4.5`  | `kr/`  | No published token cap | Provider/account limits may apply |
-| `claude-opus-4.6`   | `kr/`  | No published token cap | Latest Opus; provider/account limits apply  |
+| Model               | Prefix | Limit                  | Rate Limit                                 |
+| ------------------- | ------ | ---------------------- | ------------------------------------------ |
+| `claude-sonnet-4.5` | `kr/`  | No published token cap | Provider/account limits may apply          |
+| `claude-haiku-4.5`  | `kr/`  | No published token cap | Provider/account limits may apply          |
+| `claude-opus-4.6`   | `kr/`  | No published token cap | Latest Opus; provider/account limits apply |
 
 ### 🟢 QODER MODELS (Free PAT via qodercli)
 
-| Model              | Prefix | Limit         | Rate Limit      |
-| ------------------ | ------ | ------------- | --------------- |
+| Model              | Prefix | Limit                  | Rate Limit                        |
+| ------------------ | ------ | ---------------------- | --------------------------------- |
 | `kimi-k2-thinking` | `if/`  | No published token cap | Provider/account limits may apply |
 | `qwen3-coder-plus` | `if/`  | No published token cap | Provider/account limits may apply |
 | `deepseek-r1`      | `if/`  | No published token cap | Provider/account limits may apply |
@@ -1213,11 +1213,11 @@ Cerebras (cerebras/)   → Llama/Qwen world-fastest — 1M tok/day
 
 ### 🟡 QWEN MODELS (Device Code Auth)
 
-| Model               | Prefix | Limit         | Rate Limit          |
-| ------------------- | ------ | ------------- | ------------------- |
-| `qwen3-coder-plus`  | `qw/`  | No published token cap | Provider/account limits may apply     |
-| `qwen3-coder-flash` | `qw/`  | No published token cap | Provider/account limits may apply     |
-| `qwen3-coder-next`  | `qw/`  | No published token cap | Provider/account limits may apply     |
+| Model               | Prefix | Limit                  | Rate Limit                                    |
+| ------------------- | ------ | ---------------------- | --------------------------------------------- |
+| `qwen3-coder-plus`  | `qw/`  | No published token cap | Provider/account limits may apply             |
+| `qwen3-coder-flash` | `qw/`  | No published token cap | Provider/account limits may apply             |
+| `qwen3-coder-next`  | `qw/`  | No published token cap | Provider/account limits may apply             |
 | `vision-model`      | `qw/`  | No published token cap | Multimodal; provider/account limits may apply |
 
 ### ⚫ NVIDIA NIM (Free API Key — build.nvidia.com)
