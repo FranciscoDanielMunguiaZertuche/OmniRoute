@@ -1,0 +1,414 @@
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import test from "node:test";
+
+const SCRIPT_PATH = fileURLToPath(
+  new URL("../../scripts/check/check-provider-asset-provenance.mjs", import.meta.url)
+);
+const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
+
+const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>\n';
+const SVG_WITH_DOCTYPE = `<?xml version="1.0"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>
+`;
+
+function sha256(value: string | Buffer) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function makeFixture() {
+  const root = mkdtempSync(join(tmpdir(), "provider-asset-provenance-"));
+  const providersDir = join(root, "public/providers");
+  const manifestPath = join(root, "config/quality/provider-assets-provenance.jsonl");
+  mkdirSync(providersDir, { recursive: true });
+  mkdirSync(join(root, "config/quality"), { recursive: true });
+  return { root, providersDir, manifestPath };
+}
+
+function writeManifest(
+  path: string,
+  records: Record<string, unknown>[],
+  headerOverrides: Record<string, unknown> = {}
+) {
+  const header = {
+    recordType: "manifest",
+    schemaVersion: 1,
+    expectedAssetCount: records.filter((record) => record.recordType === "asset").length,
+    auditedCommit: "091589089cd134a94df9f6cdab9ba562b2cefd18",
+    auditedAt: "2026-08-26",
+    legalScope:
+      "Provenance records source matching only; it does not establish copyright or trademark clearance.",
+    ...headerOverrides,
+  };
+  writeFileSync(
+    path,
+    `${[header, ...records].map((record) => JSON.stringify(record)).join("\n")}\n`
+  );
+}
+
+function unresolvedAsset(path: string, content: string | Buffer = SVG) {
+  return {
+    recordType: "asset",
+    path,
+    mediaType: "image/svg+xml",
+    sha256: sha256(content),
+    provenanceStatus: "unresolved",
+    source: null,
+    upstreamLicenseClaim: null,
+    trademarkClearance: null,
+    evidenceNote: "No immutable upstream source is recorded yet.",
+  };
+}
+
+function provenAsset(path: string, content: string | Buffer = SVG) {
+  return {
+    ...unresolvedAsset(path, content),
+    provenanceStatus: "proven",
+    source: {
+      kind: "git",
+      url: "https://example.invalid/source",
+      ref: "a".repeat(40),
+      path: "icons/example.svg",
+      integrity: `sha256:${sha256(content)}`,
+      match: "byte-exact",
+    },
+    evidenceNote: "Local bytes match an immutable source; no legal clearance is inferred.",
+  };
+}
+
+function runGate(providersDir: string, manifestPath: string) {
+  return spawnSync(
+    process.execPath,
+    [SCRIPT_PATH, "--providers-dir", providersDir, "--manifest", manifestPath],
+    { encoding: "utf8" }
+  );
+}
+
+test("provider asset provenance gate rejects a new physical asset without a manifest record", () => {
+  const fixture = makeFixture();
+  try {
+    writeFileSync(join(fixture.providersDir, "registered.svg"), SVG);
+    writeFileSync(join(fixture.providersDir, "surprise.svg"), SVG);
+    writeManifest(fixture.manifestPath, [unresolvedAsset("public/providers/registered.svg")]);
+
+    const result = runGate(fixture.providersDir, fixture.manifestPath);
+
+    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+    assert.match(
+      `${result.stdout}\n${result.stderr}`,
+      /missing from manifest: public\/providers\/surprise\.svg/
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("provider asset provenance gate rejects a symlink that could evade physical coverage", () => {
+  const fixture = makeFixture();
+  try {
+    writeFileSync(join(fixture.providersDir, "registered.svg"), SVG);
+    symlinkSync("registered.svg", join(fixture.providersDir, "unregistered-link.svg"));
+    writeManifest(fixture.manifestPath, [unresolvedAsset("public/providers/registered.svg")]);
+
+    const result = runGate(fixture.providersDir, fixture.manifestPath);
+
+    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+    assert.match(
+      `${result.stdout}\n${result.stderr}`,
+      /non-regular provider asset entry is not allowed: public\/providers\/unregistered-link\.svg/
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("provider asset provenance gate rejects a stale SHA-256", () => {
+  const fixture = makeFixture();
+  try {
+    writeFileSync(join(fixture.providersDir, "registered.svg"), SVG);
+    writeManifest(fixture.manifestPath, [
+      {
+        ...unresolvedAsset("public/providers/registered.svg"),
+        sha256: "0".repeat(64),
+      },
+    ]);
+
+    const result = runGate(fixture.providersDir, fixture.manifestPath);
+
+    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+    assert.match(
+      `${result.stdout}\n${result.stderr}`,
+      /sha256 mismatch: public\/providers\/registered\.svg/
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("provider asset provenance gate validates magic MIME instead of trusting the suffix", () => {
+  const fixture = makeFixture();
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+  try {
+    writeFileSync(join(fixture.providersDir, "misleading.png"), jpeg);
+    writeManifest(fixture.manifestPath, [
+      {
+        ...unresolvedAsset("public/providers/misleading.png", jpeg),
+        mediaType: "image/png",
+      },
+    ]);
+
+    const result = runGate(fixture.providersDir, fixture.manifestPath);
+
+    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+    assert.match(
+      `${result.stdout}\n${result.stderr}`,
+      /mediaType mismatch: public\/providers\/misleading\.png \(manifest image\/png, actual image\/jpeg\)/
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("provider asset provenance gate does not accept a truncated JPEG prefix", () => {
+  const fixture = makeFixture();
+  const falseJpeg = Buffer.from([0xff, 0xd8, 0x00]);
+  try {
+    writeFileSync(join(fixture.providersDir, "truncated.jpg"), falseJpeg);
+    writeManifest(fixture.manifestPath, [
+      {
+        ...unresolvedAsset("public/providers/truncated.jpg", falseJpeg),
+        mediaType: "image/jpeg",
+      },
+    ]);
+
+    const result = runGate(fixture.providersDir, fixture.manifestPath);
+
+    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+    assert.match(
+      `${result.stdout}\n${result.stderr}`,
+      /mediaType mismatch: public\/providers\/truncated\.jpg \(manifest image\/jpeg, actual unknown\)/
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("provider asset provenance gate recognizes an SVG with an XML doctype", () => {
+  const fixture = makeFixture();
+  try {
+    writeFileSync(join(fixture.providersDir, "doctype.svg"), SVG_WITH_DOCTYPE);
+    writeManifest(fixture.manifestPath, [
+      unresolvedAsset("public/providers/doctype.svg", SVG_WITH_DOCTYPE),
+    ]);
+
+    const result = runGate(fixture.providersDir, fixture.manifestPath);
+
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("provider asset provenance gate rejects a status that implies legal clearance", () => {
+  const fixture = makeFixture();
+  try {
+    writeFileSync(join(fixture.providersDir, "registered.svg"), SVG);
+    writeManifest(fixture.manifestPath, [
+      {
+        ...unresolvedAsset("public/providers/registered.svg"),
+        provenanceStatus: "licensed",
+      },
+    ]);
+
+    const result = runGate(fixture.providersDir, fixture.manifestPath);
+
+    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+    assert.match(
+      `${result.stdout}\n${result.stderr}`,
+      /invalid provenanceStatus for public\/providers\/registered\.svg: licensed/
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("provider asset provenance gate requires an alias record for duplicate content", () => {
+  const fixture = makeFixture();
+  try {
+    writeFileSync(join(fixture.providersDir, "canonical.svg"), SVG);
+    writeFileSync(join(fixture.providersDir, "alias.svg"), SVG);
+    writeManifest(fixture.manifestPath, [
+      unresolvedAsset("public/providers/alias.svg"),
+      unresolvedAsset("public/providers/canonical.svg"),
+    ]);
+
+    const result = runGate(fixture.providersDir, fixture.manifestPath);
+
+    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+    assert.match(
+      `${result.stdout}\n${result.stderr}`,
+      new RegExp(`duplicate content missing alias record: sha256:${sha256(SVG)}`)
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("provider asset provenance gate requires immutable source evidence for proven assets", () => {
+  const fixture = makeFixture();
+  try {
+    writeFileSync(join(fixture.providersDir, "registered.svg"), SVG);
+    writeManifest(fixture.manifestPath, [
+      {
+        ...unresolvedAsset("public/providers/registered.svg"),
+        provenanceStatus: "proven",
+      },
+    ]);
+
+    const result = runGate(fixture.providersDir, fixture.manifestPath);
+
+    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+    assert.match(
+      `${result.stdout}\n${result.stderr}`,
+      /proven asset requires immutable source evidence: public\/providers\/registered\.svg/
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("provider asset provenance gate rejects malformed pinned-source integrity", () => {
+  const fixture = makeFixture();
+  try {
+    writeFileSync(join(fixture.providersDir, "registered.svg"), SVG);
+    writeManifest(fixture.manifestPath, [
+      {
+        ...provenAsset("public/providers/registered.svg"),
+        source: {
+          kind: "npm",
+          url: "https://registry.npmjs.org/example/-/example-1.2.3.tgz",
+          ref: "1.2.3",
+          path: "package/icon.js",
+          integrity: "sha512:not-a-digest",
+          packageShasum: "a".repeat(40),
+          match: "svg-path-data",
+          matchDetail: "The only local path matches the pinned component.",
+        },
+      },
+    ]);
+
+    const result = runGate(fixture.providersDir, fixture.manifestPath);
+
+    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+    assert.match(
+      `${result.stdout}\n${result.stderr}`,
+      /proven asset requires immutable source evidence: public\/providers\/registered\.svg/
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("provider asset provenance gate rejects an unstructured upstream license claim", () => {
+  const fixture = makeFixture();
+  try {
+    writeFileSync(join(fixture.providersDir, "registered.svg"), SVG);
+    writeManifest(fixture.manifestPath, [
+      {
+        ...provenAsset("public/providers/registered.svg"),
+        upstreamLicenseClaim: "MIT",
+      },
+    ]);
+
+    const result = runGate(fixture.providersDir, fixture.manifestPath);
+
+    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+    assert.match(
+      `${result.stdout}\n${result.stderr}`,
+      /invalid upstreamLicenseClaim for public\/providers\/registered\.svg/
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("provider asset provenance gate allows probable and unresolved records and reports counts", () => {
+  const fixture = makeFixture();
+  try {
+    writeFileSync(join(fixture.providersDir, "probable.svg"), SVG);
+    writeFileSync(join(fixture.providersDir, "unresolved.svg"), SVG);
+    writeManifest(fixture.manifestPath, [
+      {
+        ...unresolvedAsset("public/providers/probable.svg"),
+        provenanceStatus: "probable",
+        evidenceNote:
+          "Repository history suggests a source family, but no immutable source exists.",
+      },
+      unresolvedAsset("public/providers/unresolved.svg"),
+      {
+        recordType: "contentAlias",
+        sha256: sha256(SVG),
+        canonicalPath: "public/providers/probable.svg",
+        aliases: ["public/providers/unresolved.svg"],
+      },
+    ]);
+
+    const result = runGate(fixture.providersDir, fixture.manifestPath);
+
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(
+      result.stdout,
+      /2\/2 registered; proven=0 probable=1 unresolved=1; duplicate-groups=1/
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("provider asset provenance gate rejects a stale expected asset count", () => {
+  const fixture = makeFixture();
+  try {
+    writeFileSync(join(fixture.providersDir, "registered.svg"), SVG);
+    writeManifest(fixture.manifestPath, [unresolvedAsset("public/providers/registered.svg")], {
+      expectedAssetCount: 225,
+    });
+
+    const result = runGate(fixture.providersDir, fixture.manifestPath);
+
+    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+    assert.match(
+      `${result.stdout}\n${result.stderr}`,
+      /expectedAssetCount mismatch: manifest 225, records 1, physical 1/
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("repository provider asset manifest covers the audited 225-file snapshot", () => {
+  const result = runGate(
+    join(REPO_ROOT, "public/providers"),
+    join(REPO_ROOT, "config/quality/provider-assets-provenance.jsonl")
+  );
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(
+    result.stdout,
+    /225\/225 registered; proven=71 probable=69 unresolved=85; duplicate-groups=5/
+  );
+});
+
+test("provider asset provenance gate stays on both blocking CI rails", () => {
+  const ci = readFileSync(join(REPO_ROOT, ".github/workflows/ci.yml"), "utf8");
+  assert.match(ci, /^\s*- run: npm run check:provider-asset-provenance\s*$/m);
+
+  const quality = readFileSync(join(REPO_ROOT, ".github/workflows/quality.yml"), "utf8");
+  assert.match(quality, /gates=\([\s\S]*?\bprovider-asset-provenance\b[\s\S]*?\)/);
+  assert.match(quality, /npm run "check:\$g"/);
+});

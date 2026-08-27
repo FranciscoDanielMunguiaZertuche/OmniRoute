@@ -126,6 +126,7 @@ jobs:
       - run: npm run check:route-validation:t06
       - run: npm run check:any-budget:t11
       - run: npm run check:provider-consistency
+      - run: npm run check:provider-asset-provenance
       - run: npm run check:fetch-targets
       - run: npm run check:deps
       - run: npm run check:file-size

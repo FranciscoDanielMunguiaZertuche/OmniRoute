@@ -269,7 +269,7 @@ jobs:
         run: |
           set -uo pipefail
           gates=(
-            provider-consistency fetch-targets deps file-size error-helper
+            provider-consistency provider-asset-provenance fetch-targets deps file-size error-helper
             migration-numbering public-creds db-rules known-symbols
             route-guard-membership test-discovery test-runner-api
             mutation-test-coverage any-budget:t11 build-scope pack-policy
