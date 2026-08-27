@@ -244,7 +244,6 @@ const nextConfig = {
       "./src/mitm/server.cjs",
       "./open-sse/services/compression/engines/rtk/filters/**/*.json",
       "./open-sse/services/compression/rules/**/*.json",
-      "./open-sse/lib/sha3_wasm_bg.wasm",
       "./open-sse/lib/deepseek-pow-solver.cjs",
       // sql.js WASM is loaded at runtime by the sqljsAdapter fallback tier
       // (better-sqlite3 → node:sqlite → sql.js). Next traces sql-wasm.js but can
