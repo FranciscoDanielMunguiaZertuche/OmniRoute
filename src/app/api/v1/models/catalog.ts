@@ -71,7 +71,10 @@ import { getModelsDevPricing, getSyncedCapability } from "@/lib/modelsDevSync";
 import { getModelSpec } from "@/shared/constants/modelSpecs";
 import { classifyModelSupportedEndpoints } from "@/shared/constants/modelSupportedEndpoints";
 import { getModelsCatalogPrefixMode } from "@/shared/utils/featureFlags";
-import { buildReservedPrefixes, selectCompatibleNodeForPrefix } from "@/lib/providerNodePrefixes";
+import {
+  isProviderNodePrefixReserved,
+  selectCompatibleNodeForPrefix,
+} from "@/lib/providerNodePrefixes";
 import { applyCatalogPostFilters, finalizeCatalogResponse } from "./catalogResponse";
 import {
   isNoAuthProviderBlocked,
@@ -383,9 +386,8 @@ async function buildUnifiedModelsResponseCore(
         nodeIdToProviderType[node.id] = node.type;
       }
     }
-    const reservedProviderPrefixes = buildReservedPrefixes();
     for (const prefix of new Set(Object.values(providerIdToPrefix))) {
-      if (reservedProviderPrefixes.has(prefix)) continue;
+      if (isProviderNodePrefixReserved(prefix)) continue;
       const winner = selectCompatibleNodeForPrefix(providerNodes, prefix);
       if (winner?.id) providerNodeIdByPrefix[prefix] = winner.id;
     }

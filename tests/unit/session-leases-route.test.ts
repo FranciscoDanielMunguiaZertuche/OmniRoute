@@ -138,6 +138,33 @@ test("requires JSON mutation input after authenticating and exposes generic CORS
   assert.equal(attemptedExternalCalls, 0);
 });
 
+test("acquire rejects retired Felo models with the sanitized retirement response", async () => {
+  const retiredConnection = (await providersDb.createProviderConnection({
+    provider: "felo-web",
+    authType: "apikey",
+    name: "retired-felo-lease-route",
+    apiKey: "sk-retired-felo-lease-route",
+    isActive: true,
+    testStatus: "active",
+    providerSpecificData: {},
+  })) as { id: string };
+  const managed = await seedKey([retiredConnection.id]);
+
+  const response = await route.POST(
+    request(managed.key, { action: "acquire", model: "felo-web/gpt-4o" }, OWNER_A)
+  );
+
+  assert.equal(response.status, 410);
+  const body = await json(response);
+  assert.equal((body.error as { code?: string }).code, "PROVIDER_RETIRED");
+  assert.equal(
+    (body.error as { message?: string }).message,
+    "Provider is retired and unavailable."
+  );
+  assert.equal(JSON.stringify(body).includes("felo-web"), false);
+  assert.equal(attemptedExternalCalls, 0);
+});
+
 test("acquires, reuses, renews, releases, and fences a stale lifecycle", async () => {
   const connection = await seedConnection(1);
   const managed = await seedKey([connection.id]);

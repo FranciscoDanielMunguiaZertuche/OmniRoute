@@ -21,6 +21,7 @@ import { getLearnedReasoningEffortForModel } from "@omniroute/open-sse/services/
 import { REGISTRY } from "@omniroute/open-sse/config/providerRegistry.ts";
 import { getRegisteredProviderEffortBaseModelId } from "@omniroute/open-sse/utils/registeredEffortVariants.ts";
 import { getReservedProviderPrefixes } from "@/shared/constants/reservedProviderPrefixes";
+import { assertRuntimeProviderAvailable } from "@/shared/constants/providerRetirement";
 
 export { parseModel, stripContextWindowSuffix };
 
@@ -406,6 +407,11 @@ function stripRedundantNodePrefix(model: string, nodePrefix: unknown): string {
  */
 export async function getModelInfo(modelStr) {
   const parsed = parseModel(modelStr);
+  // Fail before compatible-node lookup and stripModelPrefix can erase or remap
+  // a retired provider identity. Executor/auth tombstones are later defenses;
+  // they cannot see the original prefix after either remapping path.
+  assertRuntimeProviderAvailable(parsed.providerAlias);
+  assertRuntimeProviderAvailable(parsed.provider);
   const { extendedContext } = parsed;
 
   const attachRuntimeModelMeta = async (info: any) => {

@@ -28,6 +28,7 @@ import {
 } from "@omniroute/open-sse/utils/proxyFetch.ts";
 import { resolveProxyForConnection } from "@/lib/localDb";
 import { hasBlockingProxyAssignment } from "@/lib/db/proxies";
+import { isRuntimeProviderRetirementError } from "@/shared/constants/providerRetirement";
 import {
   CircuitBreakerOpenError,
   getCircuitBreaker,
@@ -120,7 +121,20 @@ export async function resolveModelOrError(
   endpointPath: string = "",
   requestHeaders: Record<string, unknown> | null | undefined = null
 ) {
-  const modelInfo = await getModelInfo(modelStr);
+  let modelInfo;
+  try {
+    modelInfo = await getModelInfo(modelStr);
+  } catch (error) {
+    if (isRuntimeProviderRetirementError(error)) {
+      return {
+        error: errorResponse(error.status, error.message, {
+          type: "provider_error",
+          code: error.code,
+        }),
+      };
+    }
+    throw error;
+  }
   const sourceFormat = detectFormatFromEndpoint(body, endpointPath);
 
   if (

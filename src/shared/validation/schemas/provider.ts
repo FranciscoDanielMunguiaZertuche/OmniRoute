@@ -339,6 +339,17 @@ export const createProviderNodeSchema = z
   })
   .superRefine((value, ctx) => {
     const nodeType = value.type || "openai-compatible";
+    const normalizedPrefix = value.prefix?.trim();
+    if (normalizedPrefix && isReservedProviderPrefix(normalizedPrefix)) {
+      // Validate caller-supplied prefixes before preset handling. Presets may
+      // provide a default, but the route preserves an explicit prefix; an early
+      // return here used to let retired identities create unreachable nodes.
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: reservedProviderPrefixMessage(normalizedPrefix),
+        path: ["prefix"],
+      });
+    }
     if (value.preset === "vibeproxy-openai") {
       // Preset supplies name/prefix/apiType — but baseUrl is still mandatory
       // (a local proxy's host/port is operator-specific, unlike the generic
@@ -363,17 +374,6 @@ export const createProviderNodeSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Prefix is required",
-        path: ["prefix"],
-      });
-    } else if (isReservedProviderPrefix(value.prefix.trim())) {
-      // Reserved-prefix guard (tokenrouter bug): the runtime model resolver skips
-      // compatible-node lookup for built-in registry ids/aliases, so a node
-      // created with such a prefix could never be reached by it and silently
-      // routed requests to the built-in provider instead. Reject at the write
-      // path. Case-sensitive to match the runtime guard exactly.
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: reservedProviderPrefixMessage(value.prefix.trim()),
         path: ["prefix"],
       });
     }

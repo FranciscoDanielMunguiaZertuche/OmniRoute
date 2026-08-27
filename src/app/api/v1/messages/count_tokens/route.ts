@@ -2,7 +2,9 @@ import { CORS_HEADERS } from "@/shared/utils/cors";
 import { v1CountTokensSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 import { countTextTokens, type TokenizerContext } from "@/shared/utils/tiktokenCounter";
+import { isRuntimeProviderRetirementError } from "@/shared/constants/providerRetirement";
 import { getExecutor } from "@omniroute/open-sse/executors/index.ts";
+import { buildErrorBody } from "@omniroute/open-sse/utils/error.ts";
 import { runWithProxyContext } from "@omniroute/open-sse/utils/proxyFetch.ts";
 import { getModelInfo } from "@/sse/services/model";
 import { extractApiKey, getProviderCredentials, isValidApiKey } from "@/sse/services/auth";
@@ -103,6 +105,20 @@ export async function POST(request) {
       }
     );
   } catch (error) {
+    if (isRuntimeProviderRetirementError(error)) {
+      return new Response(
+        JSON.stringify(
+          buildErrorBody(error.status, error.message, null, {
+            type: "provider_error",
+            code: error.code,
+          })
+        ),
+        {
+          status: error.status,
+          headers: { "Content-Type": "application/json", ...CORS_HEADERS },
+        }
+      );
+    }
     log.debug(
       "COUNT_TOKENS",
       `Falling back to estimate for ${requestedModel}: ${error instanceof Error ? error.message : String(error)}`

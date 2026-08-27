@@ -1,4 +1,4 @@
-import { isRuntimeRetiredProviderId } from "@/shared/constants/providerRetirement";
+import { assertRuntimeProviderAvailable } from "@/shared/constants/providerRetirement";
 
 import { SEARCH_PROVIDERS } from "../config/searchRegistry.ts";
 import { registerExecutor, getRegisteredExecutor, hasRegisteredExecutor } from "./registry.ts";
@@ -267,11 +267,8 @@ const CHAT_UNSUPPORTED_CLOUD_AGENT_PROVIDERS = new Set(["jules"]);
 const CHAT_UNSUPPORTED_SEARCH_PROVIDERS = new Set(Object.keys(SEARCH_PROVIDERS));
 
 export function getExecutor(provider) {
-  if (isRuntimeRetiredProviderId(provider)) {
-    const err = new Error("Provider is retired and unavailable.");
-    (err as Error & { status?: number }).status = 410;
-    throw err;
-  }
+  assertRuntimeProviderAvailable(provider);
+
   const registered = getRegisteredExecutor(provider);
   if (registered) return registered;
   if (CHAT_UNSUPPORTED_CLOUD_AGENT_PROVIDERS.has(provider)) {

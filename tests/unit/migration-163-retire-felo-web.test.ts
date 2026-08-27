@@ -51,6 +51,10 @@ test("migration 163 retires every Felo id fail-closed and preserves audit histor
   db.exec(`
     DROP TRIGGER IF EXISTS provider_connections_retire_felo_web_insert;
     DROP TRIGGER IF EXISTS provider_connections_retire_felo_web_update;
+    DROP TRIGGER IF EXISTS provider_connections_preserve_felo_web_identity_insert;
+    DROP TRIGGER IF EXISTS provider_connections_preserve_felo_web_identity_update;
+    DROP TRIGGER IF EXISTS exclusive_connection_leases_retire_felo_web_insert;
+    DROP TRIGGER IF EXISTS exclusive_connection_leases_retire_felo_web_update;
   `);
 
   // The domain module reconciles API-key policy columns on a fresh database.
@@ -77,6 +81,9 @@ test("migration 163 retires every Felo id fail-closed and preserves audit histor
   const normalizedProviderVariants = [
     { id: "mixed-case-felo-web-connection", provider: " FeLo-Web " },
     { id: "mixed-case-felo-alias-connection", provider: "\tFELO\n" },
+    { id: "nbsp-felo-web-connection", provider: "\u00a0FELO-WEB\uFEFF" },
+    { id: "em-space-felo-alias-connection", provider: "\u2003felo\u2029" },
+    { id: "ideographic-felo-web-connection", provider: "\u3000FELO-WEB\u3000" },
   ] as const;
   for (const { id, provider } of normalizedProviderVariants) {
     db.prepare(
@@ -108,6 +115,7 @@ test("migration 163 retires every Felo id fail-closed and preserves audit histor
   ).run(mixedAllowedConnectionsRaw);
 
   const leaseIds = new Map<string, number>();
+  const staleLeaseEndedAt = "2000-01-01T00:00:00.000Z";
   for (const provider of RETIRED_PROVIDER_IDS) {
     const connectionId = `${provider}-connection`;
     const leaseProvider = provider === "felo-web" ? "legacy-imported-provider" : provider;
@@ -120,6 +128,12 @@ test("migration 163 retires every Felo id fail-closed and preserves audit histor
       )
       .run(provider.padEnd(64, "0"), leaseProvider, connectionId);
     leaseIds.set(provider, Number(insertedLease.lastInsertRowid));
+    if (provider === "felo-web") {
+      db.prepare("UPDATE exclusive_connection_leases SET ended_at = ? WHERE id = ?").run(
+        staleLeaseEndedAt,
+        Number(insertedLease.lastInsertRowid)
+      );
+    }
 
     db.prepare(
       "INSERT INTO usage_history (provider, model, timestamp) " +
@@ -211,7 +225,7 @@ test("migration 163 retires every Felo id fail-closed and preserves audit histor
     assert.equal(connection.error_code, "PROVIDER_REMOVED");
     assert.equal(connection.last_error, "Provider integration retired from OmniRoute v3.8.50");
     assert.equal(connection.last_error_type, "provider_removed");
-    assert.equal(connection.last_error_source, "migration:163");
+    assert.equal(connection.last_error_source, "migration:retire-felo-web");
     assert.notEqual(connection.last_error_at, "2000-01-01T00:00:00.000Z");
     assert.notEqual(connection.updated_at, "2000-01-01T00:00:00.000Z");
 
@@ -219,6 +233,13 @@ test("migration 163 retires every Felo id fail-closed and preserves audit histor
     assert.equal(lease.generation, 7);
     assert.equal(lease.state, "INVALIDATED");
     assert.ok(lease.ended_at);
+    if (provider === "felo-web") {
+      assert.notEqual(
+        lease.ended_at,
+        staleLeaseEndedAt,
+        "the retirement event must replace a stale restored end timestamp"
+      );
+    }
     assert.equal(lease.end_reason, "CONNECTION_INELIGIBLE");
 
     assert.ok(db.prepare("SELECT id FROM usage_history WHERE provider = ?").get(provider));
@@ -244,7 +265,7 @@ test("migration 163 retires every Felo id fail-closed and preserves audit histor
       test_status: "unavailable",
       error_code: "PROVIDER_REMOVED",
       last_error_type: "provider_removed",
-      last_error_source: "migration:163",
+      last_error_source: "migration:retire-felo-web",
     });
   }
 
@@ -307,7 +328,19 @@ test("migration 163 retires every Felo id fail-closed and preserves audit histor
   assert.equal(postMigrationConnection.test_status, "unavailable");
   assert.equal(postMigrationConnection.error_code, "PROVIDER_REMOVED");
   assert.equal(postMigrationConnection.last_error_type, "provider_removed");
-  assert.equal(postMigrationConnection.last_error_source, "migration:163");
+  assert.equal(postMigrationConnection.last_error_source, "migration:retire-felo-web");
+
+  db.prepare(
+    "INSERT OR REPLACE INTO provider_connections " +
+      "(id, provider, auth_type, name, is_active, test_status, created_at, updated_at) " +
+      "VALUES ('post-migration-replace-felo', '\fFELO\r', 'apikey', 'replace import', " +
+      "1, 'active', datetime('now'), datetime('now'))"
+  ).run();
+  const postMigrationReplace = readConnectionById("post-migration-replace-felo");
+  assert.equal(postMigrationReplace.is_active, 0);
+  assert.equal(postMigrationReplace.test_status, "unavailable");
+  assert.equal(postMigrationReplace.error_code, "PROVIDER_REMOVED");
+  assert.equal(postMigrationReplace.last_error_source, "migration:retire-felo-web");
 
   db.prepare(
     "INSERT INTO provider_connections " +
@@ -330,7 +363,99 @@ test("migration 163 retires every Felo id fail-closed and preserves audit histor
     is_active: 0,
     test_status: "unavailable",
     error_code: "PROVIDER_REMOVED",
-    last_error_source: "migration:163",
+    last_error_source: "migration:retire-felo-web",
+  });
+
+  const insertActiveLease = (owner: string, provider: string, connectionId: string) =>
+    Number(
+      db
+        .prepare(
+          "INSERT INTO exclusive_connection_leases " +
+            "(lease_owner_hash, api_key_id, provider, connection_id, generation, state, " +
+            "acquired_at, renewed_at, expires_at) VALUES (?, ?, ?, ?, 1, 'ACTIVE', " +
+            "datetime('now'), datetime('now'), datetime('now', '+1 hour'))"
+        )
+        .run(owner.padEnd(64, "0"), `${owner}-key`, provider, connectionId).lastInsertRowid
+    );
+
+  const alreadyTombstonedInsertLeaseId = insertActiveLease(
+    "already-tombstoned-felo-insert",
+    "legacy-imported-provider",
+    "already-tombstoned-felo-insert-connection"
+  );
+  assert.equal(readLease(alreadyTombstonedInsertLeaseId).state, "ACTIVE");
+  db.prepare(
+    "INSERT INTO provider_connections " +
+      "(id, provider, auth_type, name, is_active, test_status, error_code, last_error, " +
+      "last_error_type, last_error_source, last_error_at, created_at, updated_at) " +
+      "VALUES ('already-tombstoned-felo-insert-connection', '\u00a0felo-web\uFEFF', " +
+      "'apikey', 'already tombstoned restore', 0, 'unavailable', 'PROVIDER_REMOVED', " +
+      "'Provider integration retired from OmniRoute v3.8.50', 'provider_removed', " +
+      "'migration:retire-felo-web', '2001-01-01T00:00:00.000Z', datetime('now'), datetime('now'))"
+  ).run();
+  assert.equal(readLease(alreadyTombstonedInsertLeaseId).state, "INVALIDATED");
+
+  db.prepare(
+    "INSERT INTO provider_connections " +
+      "(id, provider, auth_type, name, is_active, created_at, updated_at) " +
+      "VALUES ('already-tombstoned-felo-update-connection', 'legacy-provider', 'apikey', " +
+      "'update to retired', 1, datetime('now'), datetime('now'))"
+  ).run();
+  const alreadyTombstonedUpdateLeaseId = insertActiveLease(
+    "already-tombstoned-felo-update",
+    "legacy-imported-provider",
+    "already-tombstoned-felo-update-connection"
+  );
+  assert.equal(readLease(alreadyTombstonedUpdateLeaseId).state, "ACTIVE");
+  db.prepare(
+    "UPDATE provider_connections SET provider = '\u2003FELO\u2029', is_active = 0, " +
+      "test_status = 'unavailable', error_code = 'PROVIDER_REMOVED', " +
+      "last_error = 'Provider integration retired from OmniRoute v3.8.50', " +
+      "last_error_type = 'provider_removed', last_error_source = 'migration:retire-felo-web', " +
+      "last_error_at = '2001-01-01T00:00:00.000Z' " +
+      "WHERE id = 'already-tombstoned-felo-update-connection'"
+  ).run();
+  assert.equal(readLease(alreadyTombstonedUpdateLeaseId).state, "INVALIDATED");
+
+  const directRetiredLeaseId = insertActiveLease(
+    "post-direct-felo",
+    " FeLo-Web ",
+    "direct-retired-felo-provider-connection"
+  );
+  assert.equal(readLease(directRetiredLeaseId).state, "INVALIDATED");
+
+  const retiredConnectionLeaseId = insertActiveLease(
+    "post-retired-felo-connection",
+    "legacy-imported-provider",
+    "post-migration-felo"
+  );
+  assert.equal(readLease(retiredConnectionLeaseId).state, "INVALIDATED");
+
+  const restoredBeforeConnectionLeaseId = insertActiveLease(
+    "restored-before-felo-connection",
+    "legacy-imported-provider",
+    "restored-felo-web-connection"
+  );
+  assert.equal(readLease(restoredBeforeConnectionLeaseId).state, "ACTIVE");
+  db.prepare(
+    "INSERT INTO provider_connections " +
+      "(id, provider, auth_type, name, is_active, created_at, updated_at) " +
+      "VALUES ('restored-felo-web-connection', 'felo-web', 'apikey', " +
+      "'restored after lease', 1, datetime('now'), datetime('now'))"
+  ).run();
+  assert.equal(readLease(restoredBeforeConnectionLeaseId).state, "INVALIDATED");
+
+  const openCodeLeaseId = insertActiveLease(
+    "post-opencode-control",
+    "opencode",
+    "post-opencode-control-connection"
+  );
+  assert.deepEqual(readLease(openCodeLeaseId), {
+    id: openCodeLeaseId,
+    generation: 1,
+    state: "ACTIVE",
+    ended_at: null,
+    end_reason: null,
   });
 
   db.prepare(
@@ -343,7 +468,55 @@ test("migration 163 retires every Felo id fail-closed and preserves audit histor
   assert.equal(updateProtectedConnection.test_status, "unavailable");
   assert.equal(updateProtectedConnection.error_code, "PROVIDER_REMOVED");
   assert.equal(updateProtectedConnection.last_error_type, "provider_removed");
-  assert.equal(updateProtectedConnection.last_error_source, "migration:163");
+  assert.equal(updateProtectedConnection.last_error_source, "migration:retire-felo-web");
+
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          "UPDATE provider_connections SET provider = 'openai', is_active = 1, " +
+            "test_status = 'active', error_code = NULL WHERE id = 'felo-web-connection'"
+        )
+        .run(),
+    /retired provider connection identity cannot be changed/i
+  );
+  const updateIdentityControl = db
+    .prepare("SELECT provider, is_active, error_code FROM provider_connections WHERE id = ?")
+    .get("felo-web-connection") as {
+    provider: string;
+    is_active: number;
+    error_code: string;
+  };
+  assert.deepEqual(updateIdentityControl, {
+    provider: "felo-web",
+    is_active: 0,
+    error_code: "PROVIDER_REMOVED",
+  });
+
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          "INSERT OR REPLACE INTO provider_connections " +
+            "(id, provider, auth_type, name, is_active, test_status, created_at, updated_at) " +
+            "VALUES ('felo-connection', 'openai', 'apikey', 'identity replacement', 1, " +
+            "'active', datetime('now'), datetime('now'))"
+        )
+        .run(),
+    /retired provider connection identity cannot be changed/i
+  );
+  const replaceIdentityControl = db
+    .prepare("SELECT provider, is_active, error_code FROM provider_connections WHERE id = ?")
+    .get("felo-connection") as {
+    provider: string;
+    is_active: number;
+    error_code: string;
+  };
+  assert.deepEqual(replaceIdentityControl, {
+    provider: " FeLo ",
+    is_active: 0,
+    error_code: "PROVIDER_REMOVED",
+  });
 
   db.prepare("UPDATE provider_connections SET name = 'renamed' WHERE id = 'felo-connection'").run();
   const unrelatedUpdate = readConnectionById("felo-connection");

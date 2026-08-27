@@ -18,6 +18,13 @@ type CountTokensResponse = {
   model?: string;
 };
 
+type ErrorResponse = {
+  error?: {
+    code?: string;
+    message?: string;
+  };
+};
+
 async function resetStorage() {
   core.resetDbInstance();
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
@@ -106,6 +113,25 @@ test("messages/count_tokens falls back to estimate when model is missing", async
   const body = (await response.json()) as CountTokensResponse;
   assert.equal(body.input_tokens, 4); // tiktoken: "abcd"=1 + "12345678"=3
   assert.equal(body.source, "local");
+});
+
+test("messages/count_tokens rejects retired Felo models instead of estimating locally", async () => {
+  const response = await POST(
+    new Request("http://localhost/api/v1/messages/count_tokens", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "felo-web/gpt-4o",
+        messages: [{ role: "user", content: "Count these tokens" }],
+      }),
+    })
+  );
+
+  assert.equal(response.status, 410);
+  const body = (await response.json()) as ErrorResponse;
+  assert.equal(body.error?.code, "PROVIDER_RETIRED");
+  assert.equal(body.error?.message, "Provider is retired and unavailable.");
+  assert.equal(JSON.stringify(body).includes("felo-web"), false);
 });
 
 test("count_tokens fallback uses exact tiktoken count with source=local", async () => {

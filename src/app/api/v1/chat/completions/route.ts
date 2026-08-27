@@ -27,6 +27,10 @@ import {
   withCompressionHeaderEcho,
 } from "@/shared/utils/compressionHeaderEcho";
 import { resolveModelAliasWithSeedFallbackOnBody } from "@/lib/modelAliasResolver";
+import {
+  assertRuntimeModelProviderAvailable,
+  isRuntimeProviderRetirementError,
+} from "@/shared/constants/providerRetirement";
 
 let initPromise = null;
 
@@ -158,6 +162,24 @@ export async function POST(request) {
           admission.lease?.release();
           return finishAdmission(structuralAdmission.response);
         }
+        admission.lease = structuralAdmission.lease;
+
+        // Preserve the caller-supplied provider identity long enough to enforce
+        // retirement. A persisted alias can otherwise rewrite felo-web/... to a
+        // healthy provider before getModelInfo or the executor tombstones see it.
+        try {
+          assertRuntimeModelProviderAvailable(parsedBody.model);
+        } catch (error) {
+          if (isRuntimeProviderRetirementError(error)) {
+            return finishAdmission(
+              errorResponse(error.status, error.message, {
+                type: "provider_error",
+                code: error.code,
+              })
+            );
+          }
+          throw error;
+        }
 
         // Resolve model alias before forwarding to handleChat
         if (parsedBody && typeof parsedBody === "object") {
@@ -165,7 +187,6 @@ export async function POST(request) {
             /* swallow — fall through with original model */
           });
         }
-        admission.lease = structuralAdmission.lease;
 
         const { blocked, result } = injectionGuard(parsedBody);
         if (blocked) {
