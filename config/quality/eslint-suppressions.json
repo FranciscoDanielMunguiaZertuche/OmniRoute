@@ -322,11 +322,6 @@
       "count": 1
     }
   },
-  "open-sse/lib/deepseek-pow.ts": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 5
-    }
-  },
   "open-sse/mcp-server/__tests__/a2aLifecycle.test.ts": {
     "@typescript-eslint/no-explicit-any": {
       "count": 1

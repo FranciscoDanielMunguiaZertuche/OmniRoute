@@ -15,6 +15,10 @@
   `docs/routing/STRICT_ZERO_COST.md`.
 
 ---
+- **fix(deepseek-web):** replace the unlicensed extracted PoW CJS/WASM artifacts with an
+  auditable clean-room JavaScript `DeepSeekHashV1` implementation derived from FIPS 202's
+  `KECCAK-p[1600,23]`; request-path searches now run in bounded workers with input limits,
+  timeouts, cancellation, and a concurrency cap. ([#11732](https://github.com/diegosouzapw/OmniRoute/pull/11732))
 - feat(services): show sanitized CLIProxyAPI account health from its authenticated management API without exposing credentials, file paths, or raw account metadata (#6342)
 - **feat(credential-health):** pace the credential health sweep per connection via `provider_connections.healthCheckInterval` (minutes, 0 = never), with `CREDENTIAL_HEALTH_CHECK_INTERVAL` as the global default ([#8443](https://github.com/diegosouzapw/OmniRoute/issues/8443))
 - **behavior change:** `healthCheckInterval` is a shared column — it paces both the OAuth token refresh and the credential health sweep, and `0` disables both. The connection editor defaults it to 60, so configured OAuth connections are now credential-checked at 60min instead of the previous ~10min (aligned with the probe-volume goal of #8443)
