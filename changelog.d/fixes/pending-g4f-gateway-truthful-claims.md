@@ -1,1 +1,0 @@
-- **fix(providers):** correct all five g4f.space gateway descriptions to document proof-of-work credits or member API keys, variable limits, and the remote prompt boundary instead of promising free keyless access at five requests per minute.
