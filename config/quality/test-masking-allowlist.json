@@ -21,66 +21,66 @@
   "tests/unit/provider-page-helpers-3501.test.ts": "v3.8.47 #6862: feat GPT-5.6 family — 2 assert.ok(values.includes(...)) substituídos por 1 assert.deepEqual(values, [lista completa ordenada de effort tiers]) — asserção estritamente MAIS FORTE, net 69→68. Verificado legítimo. Prune após v3.8.47 mergear para main.",
   "tests/unit/vscode-token-routes.test.ts": "v3.8.47 #6862: feat GPT-5.6 family — a matriz de modelos do VS Code token route migrou de GPT-5.4/5.5 para a família 5.6 (tiers consolidados, context 200k→500k, novos slugs sol); os asserts da matriz aposentada foram substituídos pelos da nova (net 247→200). Asserts migrados ao novo catálogo, não enfraquecidos. Verificado legítimo. Prune após v3.8.47 mergear para main.",
   "tests/unit/providers-page-utils.test.ts": "v3.8.47 #6675: remoção dos providers obsoletos glhf/kluster/cablyai/inclusionai — os 2 asserts que citavam providers removidos do catálogo foram removidos junto (net 276→274). Superfície aposentada, não mascaramento. Verificado legítimo. Prune após v3.8.47 mergear para main.",
-  "tests/unit/errorClassifier-noauth-403-6315.test.ts": "v3.8.50 #PENDING: the two terminal SENTINEL_BLOCKED assertions covered only the retired common ChatGPT Web executor and its removed sentinel path (4→2). The remaining no-auth/apikey 403 controls are unchanged; retirement behavior is now covered by deterministic 410/no-network regression tests. Provider surface removed, not weakened.",
-  "tests/unit/live-model-catalog-reconciliation-8926.test.ts": "v3.8.50 #PENDING: six static assertions for curated common ChatGPT Web variants were removed with that provider's catalog (41→35). The remaining live-catalog reconciliation matrix is unchanged; dedicated retirement tests now assert the common ids are absent and fail closed while Codex Web controls remain. Provider surface removed, not weakened.",
-  "tests/unit/provider-validation-specialty.test.ts": "v3.8.50 #PENDING: seventeen assertions exercised the removed common ChatGPT Web TLS/session validator (425→408). The validator and exclusive TLS implementation no longer ship; management retirement regressions now prove both ids return sanitized 410 without network, while other specialty validators remain covered. Provider surface removed, not weakened.",
+  "tests/unit/errorClassifier-noauth-403-6315.test.ts": "v3.8.50 #11754: the two terminal SENTINEL_BLOCKED assertions covered only the retired common ChatGPT Web executor and its removed sentinel path (4→2). The remaining no-auth/apikey 403 controls are unchanged; retirement behavior is now covered by deterministic 410/no-network regression tests. Provider surface removed, not weakened.",
+  "tests/unit/live-model-catalog-reconciliation-8926.test.ts": "v3.8.50 #11754: six static assertions for curated common ChatGPT Web variants were removed with that provider's catalog (41→35). The remaining live-catalog reconciliation matrix is unchanged; dedicated retirement tests now assert the common ids are absent and fail closed while Codex Web controls remain. Provider surface removed, not weakened.",
+  "tests/unit/provider-validation-specialty.test.ts": "v3.8.50 #11754: seventeen assertions exercised the removed common ChatGPT Web TLS/session validator (425→408). The validator and exclusive TLS implementation no longer ship; management retirement regressions now prove both ids return sanitized 410 without network, while other specialty validators remain covered. Provider surface removed, not weakened.",
   "_deletedWithReplacement": {
     "_comment": "Deleções de arquivo de teste com SUBSTITUTO verificado (o gate exige que o replacement exista no HEAD e seja arquivo de teste). Uso restrito ao caso 'reescrito em outro path sem rename detectável pelo -M do git'. Cada entrada precisa de reason com PR ref e passa por revisão humana no release PR. Prune após o release mergear para main.",
     "open-sse/services/__tests__/chatgptTlsClient.test.ts": {
       "replacement": "tests/unit/chatgpt-web-source-retirement.test.ts",
-      "reason": "v3.8.50 #PENDING: the common ChatGPT Web provider and its exclusive TLS wrapper were retired because provenance could not be cleared. The replacement pins source absence while the independent Codex Web transport remains covered by its dedicated tests."
+      "reason": "v3.8.50 #11754: the common ChatGPT Web provider and its exclusive TLS wrapper were retired because provenance could not be cleared. The replacement pins source absence while the independent Codex Web transport remains covered by its dedicated tests."
     },
     "tests/unit/chatgpt-image-cache.test.ts": {
       "replacement": "tests/unit/chatgpt-web-source-retirement.test.ts",
-      "reason": "v3.8.50 #PENDING: the cache existed only for the retired common ChatGPT Web image implementation. The replacement proves that exclusive source stays absent; Codex Web is unaffected."
+      "reason": "v3.8.50 #11754: the cache existed only for the retired common ChatGPT Web image implementation. The replacement proves that exclusive source stays absent; Codex Web is unaffected."
     },
     "tests/unit/chatgpt-web-async-image-ws-shapes-7357.test.ts": {
       "replacement": "tests/unit/chatgpt-web-image-handler-retirement.test.ts",
-      "reason": "v3.8.50 #PENDING: the common provider's WebSocket image protocol was removed with the non-clearable implementation. The replacement proves deterministic fail-closed image handling without upstream network access."
+      "reason": "v3.8.50 #11754: the common provider's WebSocket image protocol was removed with the non-clearable implementation. The replacement proves deterministic fail-closed image handling without upstream network access."
     },
     "tests/unit/chatgpt-web-citations-escape.test.ts": {
       "replacement": "tests/unit/chatgpt-web-source-retirement.test.ts",
-      "reason": "v3.8.50 #PENDING: citation parsing was exclusive to the retired common provider. The replacement pins removal of that derived source and its registry/executor surface."
+      "reason": "v3.8.50 #11754: citation parsing was exclusive to the retired common provider. The replacement pins removal of that derived source and its registry/executor surface."
     },
     "tests/unit/chatgpt-web-citations.test.ts": {
       "replacement": "tests/unit/chatgpt-web-source-retirement.test.ts",
-      "reason": "v3.8.50 #PENDING: citation parsing was exclusive to the retired common provider. The replacement pins removal of that derived source and its registry/executor surface."
+      "reason": "v3.8.50 #11754: citation parsing was exclusive to the retired common provider. The replacement pins removal of that derived source and its registry/executor surface."
     },
     "tests/unit/chatgpt-web-handoff-resume.test.ts": {
       "replacement": "tests/unit/chatgpt-web-source-retirement.test.ts",
-      "reason": "v3.8.50 #PENDING: handoff/resume was exclusive to the retired common provider. The replacement pins removal of the implementation instead of preserving a functional path to it."
+      "reason": "v3.8.50 #11754: handoff/resume was exclusive to the retired common provider. The replacement pins removal of the implementation instead of preserving a functional path to it."
     },
     "tests/unit/chatgpt-web-image-silentdrop.test.ts": {
       "replacement": "tests/unit/chatgpt-web-image-handler-retirement.test.ts",
-      "reason": "v3.8.50 #PENDING: the old image success/error contract no longer exists. The replacement asserts a sanitized 410 PROVIDER_RETIRED response and zero upstream dispatch."
+      "reason": "v3.8.50 #11754: the old image success/error contract no longer exists. The replacement asserts a sanitized 410 PROVIDER_RETIRED response and zero upstream dispatch."
     },
     "tests/unit/chatgpt-web-max-thinking-effort.test.ts": {
       "replacement": "tests/unit/chatgpt-web-runtime-block.test.ts",
-      "reason": "v3.8.50 #PENDING: model-specific thinking behavior belonged to the retired common executor. The replacement proves every explicit retired model path is blocked before dispatch."
+      "reason": "v3.8.50 #11754: model-specific thinking behavior belonged to the retired common executor. The replacement proves every explicit retired model path is blocked before dispatch."
     },
     "tests/unit/chatgpt-web-models-split.test.ts": {
       "replacement": "tests/unit/chatgpt-web-retirement.test.ts",
-      "reason": "v3.8.50 #PENDING: the common provider model catalog was removed. The replacement guards catalog/registry/alias retirement and preserves positive Codex Web controls."
+      "reason": "v3.8.50 #11754: the common provider model catalog was removed. The replacement guards catalog/registry/alias retirement and preserves positive Codex Web controls."
     },
     "tests/unit/chatgpt-web-sha3-boringssl-5531.test.ts": {
       "replacement": "tests/unit/chatgpt-web-source-retirement.test.ts",
-      "reason": "v3.8.50 #PENDING: the SHA3 helper existed only for the removed common provider's sentinel proof-of-work path. The replacement pins absence of both source surfaces."
+      "reason": "v3.8.50 #11754: the SHA3 helper existed only for the removed common provider's sentinel proof-of-work path. The replacement pins absence of both source surfaces."
     },
     "tests/unit/chatgpt-web-tools-5240.test.ts": {
       "replacement": "tests/unit/chatgpt-web-source-retirement.test.ts",
-      "reason": "v3.8.50 #PENDING: the functional tool path depended on the retired common executor. The replacement prevents reintroduction of that executor; provider-neutral web-tools coverage remains separate."
+      "reason": "v3.8.50 #11754: the functional tool path depended on the retired common executor. The replacement prevents reintroduction of that executor; provider-neutral web-tools coverage remains separate."
     },
     "tests/unit/chatgpt-web-tools-7679.test.ts": {
       "replacement": "tests/unit/web-tools-contract-7679.test.ts",
-      "reason": "v3.8.50 #PENDING: shared web-tools contract coverage moved to a provider-neutral filename while the common ChatGPT Web executor was retired. This is a coverage-preserving relocation."
+      "reason": "v3.8.50 #11754: shared web-tools contract coverage moved to a provider-neutral filename while the common ChatGPT Web executor was retired. This is a coverage-preserving relocation."
     },
     "tests/unit/chatgpt-web.test.ts": {
       "replacement": "tests/unit/chatgpt-web-retirement.test.ts",
-      "reason": "v3.8.50 #PENDING: the functional suite targeted a common executor that no longer ships due non-clearable provenance. The replacement guards deterministic retirement across registry, dispatch and Codex Web controls."
+      "reason": "v3.8.50 #11754: the functional suite targeted a common executor that no longer ships due non-clearable provenance. The replacement guards deterministic retirement across registry, dispatch and Codex Web controls."
     },
     "tests/unit/unprefixed-scan-web-cookie-10848.test.ts": {
       "replacement": "tests/unit/image-registry-gpt56.test.ts",
-      "reason": "v3.8.50 #PENDING: the common provider no longer participates in image catalog scans. The replacement proves its catalog entry is absent, its slashful and bare image models remain unresolved, and the Codex OAuth image catalog remains intact."
+      "reason": "v3.8.50 #11754: the common provider no longer participates in image catalog scans. The replacement proves its catalog entry is absent, its slashful and bare image models remain unresolved, and the Codex OAuth image catalog remains intact."
     },
     "open-sse/services/combo/__tests__/targetExhaustion.test.ts": {
       "replacement": "tests/unit/combo/combo-target-exhaustion.test.ts",
