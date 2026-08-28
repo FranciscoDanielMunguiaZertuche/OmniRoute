@@ -21,6 +21,16 @@ export const geminiProvider: RegistryEntry = {
     clientSecretDefault: resolvePublicCred("gemini_alt"),
   },
   models: [
+    // Gemini 3.7 Flash (launched 2026-08-13, stable API id `gemini-3.7-flash`,
+    // 1M context, customizable thinking). Mirrors the flash-tier capabilities of
+    // the neighboring 3.5/3.6 entries; the public Gemini API rejects client-
+    // supplied thinking params at this tier, so no supportsReasoning flag here.
+    {
+      id: "gemini-3.7-flash",
+      name: "Gemini 3.7 Flash",
+      toolCalling: true,
+      supportsVision: true,
+    },
     {
       id: "gemini-3.1-pro-preview",
       name: "Gemini 3.1 Pro Preview",

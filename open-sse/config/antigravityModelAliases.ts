@@ -104,6 +104,20 @@ export const ANTIGRAVITY_PUBLIC_MODELS = Object.freeze([
     supportsVision: true,
     toolCalling: true,
   },
+  // Gemini 3.7 Flash (Tiered) — the only 3.7 variant returned by the live
+  // :fetchAvailableModels probe (2026-08-20). A single dynamic-thinking model
+  // (upstream thinkingBudget:-1, recommended:true) that accepts and honors an
+  // explicit thinkingBudget — unlike the fixed 3.6 tier ids above. Vision +
+  // tools verified live through the antigravity OAuth accounts.
+  {
+    id: "gemini-3.7-flash-tiered",
+    name: "Gemini 3.7 Flash (Tiered)",
+    contextLength: 1048576,
+    maxOutputTokens: 65536,
+    supportsReasoning: true,
+    supportsVision: true,
+    toolCalling: true,
+  },
   {
     id: "gemini-3.1-flash-lite",
     name: "Gemini 3.1 Flash Lite",

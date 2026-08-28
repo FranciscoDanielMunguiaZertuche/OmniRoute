@@ -1,5 +1,3 @@
-"use server";
-
 import { NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
@@ -98,10 +96,7 @@ export async function GET(request: Request) {
       configPath: getForgeConfigPath(),
     });
   } catch (err) {
-    return NextResponse.json(
-      { error: { message: sanitizeErrorMessage(err) } },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: { message: sanitizeErrorMessage(err) } }, { status: 500 });
   }
 }
 
@@ -114,10 +109,7 @@ export async function POST(request: Request) {
   try {
     rawBody = await request.json();
   } catch {
-    return NextResponse.json(
-      { error: { message: "Invalid JSON body" } },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: { message: "Invalid JSON body" } }, { status: 400 });
   }
 
   try {
@@ -162,10 +154,7 @@ export async function POST(request: Request) {
       configPath,
     });
   } catch (err) {
-    return NextResponse.json(
-      { error: { message: sanitizeErrorMessage(err) } },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: { message: sanitizeErrorMessage(err) } }, { status: 500 });
   }
 }
 
@@ -196,9 +185,6 @@ export async function DELETE(request: Request) {
 
     return NextResponse.json({ success: true, message: "Forge settings removed successfully" });
   } catch (err) {
-    return NextResponse.json(
-      { error: { message: sanitizeErrorMessage(err) } },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: { message: sanitizeErrorMessage(err) } }, { status: 500 });
   }
 }

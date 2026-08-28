@@ -111,6 +111,48 @@ function messageDeltaEndsLifecycle(parsed: Record<string, unknown>): boolean {
 interface OpenAiLifecycleFlags {
   hasChoicePayload: boolean;
   hasTerminalMarker: boolean;
+  // Crumb-stop accounting (user log 2026-08-21, ox-alpha on opencode zen):
+  // a stream can also terminate CLEANLY (finish_reason=stop / [DONE]) after
+  // emitting only a crumb — a heading line, reasoning-only deltas with no
+  // answer/tool-call, or nothing at all — which the #7285/#5297 branches
+  // below cannot catch because real content deltas exit the peek loop as
+  // "content". These counters accumulate while the peek is still running so
+  // the done-branch can distinguish a real turn (text past the threshold,
+  // any tool call) from an empty or reasoning-only stop, regardless of
+  // whether usage was reported.
+  contentChars: number;
+  reasoningChars: number;
+  sawToolCallDelta: boolean;
+  sawUsage: boolean;
+}
+
+/**
+ * Max accumulated visible output (text + reasoning chars, streaming) for a
+ * cleanly-terminated stream to still be classified as a "crumb stop" when no
+ * usage was ever reported. Above this the response is unambiguously real and
+ * the peek exits early. Chosen well above one heading/short sentence but far
+ * below any agent turn: legit coding turns emit tool calls (never reach this
+ * check) or hundreds+ of chars.
+ */
+export const OPENAI_CRUMB_STOP_MAX_CHARS = 200;
+
+/** Accumulate one OpenAI-shape choice's delta/message into the crumb counters. */
+function accumulateOpenAiChoiceCrumb(
+  choice: Record<string, unknown>,
+  flags: OpenAiLifecycleFlags
+): void {
+  const delta = asObject(choice, "delta") ?? asObject(choice, "message");
+  if (!delta) return;
+  if (typeof delta.content === "string") {
+    flags.contentChars += delta.content.length;
+  }
+  const reasoning = delta.reasoning_content ?? delta.reasoning_text ?? delta.reasoning;
+  if (typeof reasoning === "string") {
+    flags.reasoningChars += reasoning.length;
+  }
+  if (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0) {
+    flags.sawToolCallDelta = true;
+  }
 }
 
 /** Update `flags` in place from one parsed OpenAI-shape SSE `data:` payload. */
@@ -118,9 +160,19 @@ function applyOpenAiLifecycleEvent(
   parsed: Record<string, unknown>,
   flags: OpenAiLifecycleFlags
 ): void {
-  if (!isOpenAIChoicesPayload(parsed)) return;
+  if (isRecord(parsed.usage)) flags.sawUsage = true;
+  const choices = parsed.choices;
+  if (!Array.isArray(choices)) return;
   flags.hasChoicePayload = true;
-  if (hasOpenAIFinishReason(parsed)) flags.hasTerminalMarker = true;
+  if (hasOpenAIFinishReason(parsed)) {
+    flags.hasTerminalMarker = true;
+    // Some providers ride the usage object on the finish_reason chunk itself
+    // with `choices: []` — already past the array guard, so capture it.
+    if (isRecord(parsed.usage)) flags.sawUsage = true;
+  }
+  for (const choice of choices) {
+    if (isRecord(choice)) accumulateOpenAiChoiceCrumb(choice, flags);
+  }
 }
 
 /**
@@ -276,7 +328,14 @@ export async function validateResponseQuality(
     };
     let anyContentFound = false;
     // #7285: OpenAI-shape lifecycle tracking, parallel to `sse` above.
-    const openAi: OpenAiLifecycleFlags = { hasChoicePayload: false, hasTerminalMarker: false };
+    const openAi: OpenAiLifecycleFlags = {
+      hasChoicePayload: false,
+      hasTerminalMarker: false,
+      contentChars: 0,
+      reasoningChars: 0,
+      sawToolCallDelta: false,
+      sawUsage: false,
+    };
     // User log 1784230812441-bf3789: the previous `!sawAnyBytes` gate below let
     // ANY byte — even unparseable garbage with no SSE framing at all — pass
     // combo failover through. These two flags are tracked in parallel to
@@ -311,9 +370,9 @@ export async function validateResponseQuality(
     function isTerminalUsageOnlyChunk(parsed: Record<string, unknown>, eventType: string): boolean {
       return Boolean(
         parsed.usage &&
-          typeof parsed.usage === "object" &&
-          !Array.isArray(parsed.choices) &&
-          !eventType.startsWith("response.")
+        typeof parsed.usage === "object" &&
+        !Array.isArray(parsed.choices) &&
+        !eventType.startsWith("response.")
       );
     }
 
@@ -366,6 +425,21 @@ export async function validateResponseQuality(
         applyOpenAiLifecycleEvent(parsed, openAi);
         if (openAi.hasTerminalMarker) sawTerminator = true;
 
+        // Crumb-stop accounting: once accumulated output is unambiguously real
+        // (enough visible TEXT, or any tool call) stop peeking and forward.
+        // Reasoning deltas deliberately do NOT clear this bar (#ox-reasoning):
+        // ox-alpha on opencode zen glitches emit large reasoning payloads and
+        // then terminate CLEANLY with zero text and zero tool calls — exactly
+        // the shape the done-branch below must see to invalidate. Healthy
+        // agent turns still exit here as soon as answer text flows past the
+        // threshold, so live downstream streaming is preserved for everything
+        // except a pure-thinking prefix.
+        const crumbThresholdExceeded =
+          openAi.sawToolCallDelta || openAi.contentChars > OPENAI_CRUMB_STOP_MAX_CHARS;
+        if (crumbThresholdExceeded) {
+          return "content";
+        }
+
         const eventType =
           (typeof parsed.type === "string" ? parsed.type : null) || pendingEventType || "";
         pendingEventType = "";
@@ -375,8 +449,16 @@ export async function validateResponseQuality(
         }
 
         if (isTerminalUsageOnlyChunk(parsed, eventType)) sawTerminator = true;
+        // Usage may also ride a usage-only chunk with no choices[] at all.
+        if (isRecord(parsed.usage)) openAi.sawUsage = true;
 
-        if (isKnownNonClaudeStreamPayload(parsed, eventType)) {
+        // While an OpenAI-shape stream is still in crumb territory (no tool
+        // calls, sub-threshold output) its small deltas must NOT exit the peek
+        // early via isKnownNonClaudeStreamPayload — the whole point is to see
+        // whether the stream terminates cleanly without ever reporting usage.
+        // Non-OpenAI shapes keep the legacy behavior untouched.
+        const isOpenAiShape = Array.isArray(parsed.choices);
+        if (!isOpenAiShape && isKnownNonClaudeStreamPayload(parsed, eventType)) {
           return "content";
         }
 
@@ -500,6 +582,59 @@ export async function validateResponseQuality(
             return { valid: false, reason: "streaming openai truncated without finish_reason" };
           }
 
+          // #5297 + #ox-reasoning: an OpenAI-shape stream that terminates
+          // cleanly (`finish_reason` or `[DONE]`) with zero TEXT and zero
+          // tool-call deltas is not a completion, whether it carried nothing
+          // at all (classic "empty stop" — GLM 5.2 on NVIDIA NIM, DeepSeek
+          // free tier) or a large reasoning-only payload that then stopped
+          // (ox-alpha on opencode zen, user log 2026-08-21: the agent
+          // received a lone thinking block and silently ended its turn).
+          // Usage presence deliberately does NOT rescue this shape anymore
+          // (supersedes the old #2341 carve-out): zen reports usage even on
+          // these glitched turns. An agentic turn ALWAYS ends in text or a
+          // tool call; anything else is truncation → retry/failover.
+          if (
+            openAi.hasChoicePayload &&
+            openAi.hasTerminalMarker &&
+            !openAi.sawToolCallDelta &&
+            openAi.contentChars === 0
+          ) {
+            log.warn?.(
+              "COMBO",
+              openAi.reasoningChars > 0
+                ? `Streaming OpenAI-shape response terminated cleanly after ${openAi.reasoningChars} reasoning chars with NO text/tool-call (reasoning-only stop) — marking as invalid for combo failover`
+                : "Streaming OpenAI-shape response terminated with zero content deltas (empty stop) — marking as invalid for combo failover"
+            );
+            return {
+              valid: false,
+              reason:
+                openAi.reasoningChars > 0
+                  ? "streaming openai reasoning-only stop"
+                  : "streaming openai empty stop",
+            };
+          }
+
+          // Crumb stop (user log 2026-08-21, ox-alpha on opencode zen): the
+          // stream terminated cleanly after emitting only a micro-answer — a
+          // bare heading or similar — and NEVER reported usage. Legit short
+          // answers report usage (both omp and opencode request
+          // stream_options.include_usage), so clean-stop + sub-threshold text
+          // + no usage is an upstream glitch, not a completion:
+          // retry/failover instead of surfacing a silently-truncated turn.
+          if (
+            openAi.hasChoicePayload &&
+            openAi.hasTerminalMarker &&
+            !openAi.sawToolCallDelta &&
+            !openAi.sawUsage &&
+            openAi.contentChars <= OPENAI_CRUMB_STOP_MAX_CHARS &&
+            openAi.reasoningChars <= OPENAI_CRUMB_STOP_MAX_CHARS
+          ) {
+            log.warn?.(
+              "COMBO",
+              `Streaming OpenAI-shape response stopped cleanly with a crumb (${openAi.contentChars} text + ${openAi.reasoningChars} reasoning chars) and no usage — marking as invalid for combo failover`
+            );
+            return { valid: false, reason: "streaming openai crumb stop without usage" };
+          }
           // Incomplete lifecycle or non-Claude stream — replay all buffered
           // bytes. The reader is exhausted so the forwarding reader will
           // immediately signal done.
@@ -693,13 +828,53 @@ export async function validateResponseQuality(
     return { valid: false, reason: "empty content and no tool_calls in response" };
   }
 
-  // Issue #3587: Reasoning models (deepseek-v4-flash, nemotron, etc.) may consume
-  // ALL max_tokens for reasoning_tokens, leaving content empty. When content is
-  // empty but reasoning_content exists, and usage shows reasoning consumed nearly
-  // all completion tokens, treat as invalid so the combo loop retries with more
-  // tokens or falls back to a non-reasoning model.
+  // Crumb stop — non-streaming twin of the streaming rule above: a clean
+  // `finish_reason: "stop"` carrying only a micro-answer, with NO usage
+  // object. Healthy non-streaming completions always report usage; absence
+  // plus a sub-threshold answer is an upstream glitch → retry/failover.
+  // Reasoning-only bodies remain valid (#2341).
+  if (!hasToolCalls && !hasReasoningContent && !isRecord(json.usage)) {
+    const finishReason = (firstChoice as Record<string, unknown> | undefined)?.finish_reason;
+    const textLen = Array.isArray(content)
+      ? content.reduce(
+          (n: number, part: unknown) =>
+            n +
+            (!!part &&
+            typeof part === "object" &&
+            typeof (part as Record<string, unknown>).text === "string"
+              ? ((part as Record<string, string>).text as string).length
+              : 0),
+          0
+        )
+      : typeof content === "string"
+        ? content.trim().length
+        : 0;
+    if (finishReason === "stop" && textLen <= OPENAI_CRUMB_STOP_MAX_CHARS) {
+      log.warn?.(
+        "COMBO",
+        `Non-streaming response stopped cleanly with a ${textLen}-char crumb and no usage — marking as invalid for combo failover`
+      );
+      return { valid: false, reason: "crumb stop without usage" };
+    }
+  }
+
+  // Issue #3587 + #ox-reasoning: Reasoning models (deepseek-v4-flash,
+  // nemotron, ox-alpha on opencode zen) may consume ALL completion budget for
+  // reasoning_tokens, leaving content empty — or simply stop cleanly after a
+  // reasoning-only body (streaming twin above). When content is empty with
+  // reasoning present and no tool calls, a clean `finish_reason: "stop"` is
+  // always invalid regardless of the token ratio (usage rides these glitched
+  // turns too); for non-stop finishes keep the legacy ≥90% heuristic.
   const contentIsEmpty = content === null || content === undefined || content === "";
   if (contentIsEmpty && hasReasoningContent && !hasToolCalls) {
+    const finishReason = (firstChoice as Record<string, unknown> | undefined)?.finish_reason;
+    if (finishReason === "stop") {
+      log.warn?.(
+        "COMBO",
+        "Non-streaming response stopped cleanly with reasoning-only output and no text/tool-call — marking as invalid for combo failover"
+      );
+      return { valid: false, reason: "non-streaming reasoning-only stop" };
+    }
     const usage = json?.usage as Record<string, unknown> | undefined;
     if (usage) {
       const completionTokens = Number(usage.completion_tokens) || 0;

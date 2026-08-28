@@ -18,12 +18,11 @@ function sseStream(body: string): ReadableStream<Uint8Array> {
 // OpenAI-shape stream: single role-only delta chunk, then the connection
 // closes. No finish_reason anywhere, no `data: [DONE]` sentinel.
 function makeTruncatedOpenAiStream(): Response {
-  const body =
-    `data: ${JSON.stringify({
-      id: "chatcmpl-test-truncated",
-      object: "chat.completion.chunk",
-      choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }],
-    })}\n\n`;
+  const body = `data: ${JSON.stringify({
+    id: "chatcmpl-test-truncated",
+    object: "chat.completion.chunk",
+    choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }],
+  })}\n\n`;
   return new Response(sseStream(body), {
     status: 200,
     headers: { "content-type": "text/event-stream" },
@@ -31,7 +30,11 @@ function makeTruncatedOpenAiStream(): Response {
 }
 
 // Healthy OpenAI-shape stream: content delta + a chunk carrying
-// finish_reason: "stop" — must keep passing through (#3399/#3685 contract).
+// finish_reason: "stop" + a terminal usage chunk — must keep passing through
+// (#3399/#3685 contract). The usage chunk matters since the crumb-stop rule
+// (see tests/unit/combo-quality-crumb-stop.test.ts): a cleanly-terminated
+// sub-threshold stream WITHOUT usage is now classified as an upstream glitch,
+// and real harnesses (omp/opencode) always request include_usage.
 function makeHealthyOpenAiStream(): Response {
   const chunks = [
     JSON.stringify({
@@ -43,6 +46,12 @@ function makeHealthyOpenAiStream(): Response {
       id: "chatcmpl-test-healthy",
       object: "chat.completion.chunk",
       choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+    }),
+    JSON.stringify({
+      id: "chatcmpl-test-healthy",
+      object: "chat.completion.chunk",
+      choices: [],
+      usage: { prompt_tokens: 12, completion_tokens: 2, total_tokens: 14 },
     }),
   ];
   const body = chunks.map((c) => `data: ${c}\n\n`).join("") + "data: [DONE]\n\n";

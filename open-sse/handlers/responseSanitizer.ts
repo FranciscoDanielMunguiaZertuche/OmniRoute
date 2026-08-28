@@ -8,6 +8,7 @@ import {
   collapseExcessiveNewlines,
   extractThinkingFromContent,
 } from "./responseSanitizer/reasoning.ts";
+import { filterDegenerateToolCalls } from "../utils/toolCallSanitizer.ts";
 export {
   extractThinkingFromContent,
   shouldParseTextualReasoningTags,
@@ -278,6 +279,16 @@ export function sanitizeOpenAIResponse(
       ) {
         sanitizedChoice.finish_reason = "tool_calls";
       }
+      if (
+        message &&
+        (!Array.isArray(message.tool_calls) || message.tool_calls.length === 0) &&
+        sanitizedChoice.finish_reason === "tool_calls"
+      ) {
+        // Every tool call was stripped as degenerate (empty/"true" arguments) —
+        // demote the finish so strict clients don't wait on tool runs that
+        // will never execute.
+        sanitizedChoice.finish_reason = "stop";
+      }
       if (stripReasoning && message) {
         deleteOpenAICompatibleReasoningFields(message);
       }
@@ -446,9 +457,23 @@ function sanitizeMessage(msg: unknown, options: ParseOptions = {}): unknown {
   applyTextualToolCallSanitization(sanitized, msgRecord);
 
   if (msgRecord.tool_calls) {
-    sanitized.tool_calls = Array.isArray(msgRecord.tool_calls)
-      ? msgRecord.tool_calls.map((toolCall) => stripZeroWidthToolCallArguments(toolCall))
-      : msgRecord.tool_calls;
+    if (Array.isArray(msgRecord.tool_calls)) {
+      // Strip degenerate tool calls (empty/missing function name, or arguments
+      // that are not a JSON object — e.g. `arguments: "true"` from
+      // deepseek-v4-flash via opencode-zen). Keeps strict clients from
+      // executing a nonsense call; the field is removed entirely when every
+      // call was degenerate so the message stays a plain assistant message.
+      const filtered = filterDegenerateToolCalls(
+        msgRecord.tool_calls.map((toolCall) => stripZeroWidthToolCallArguments(toolCall)) as Array<{
+          function?: { name?: unknown; arguments?: unknown };
+        }>
+      );
+      if (filtered.length > 0) {
+        sanitized.tool_calls = filtered;
+      }
+    } else {
+      sanitized.tool_calls = msgRecord.tool_calls;
+    }
   }
 
   if (msgRecord.function_call) {

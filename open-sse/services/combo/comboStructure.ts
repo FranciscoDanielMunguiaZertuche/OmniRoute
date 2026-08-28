@@ -13,10 +13,7 @@
 
 import { getModelContextLimit } from "../../../src/lib/modelCapabilities";
 import { getComboModelString, normalizeComboStep } from "../../../src/lib/combos/steps.ts";
-import {
-  getProviderByAlias,
-  getProviderById,
-} from "../../../src/shared/constants/providers.ts";
+import { getProviderByAlias, getProviderById } from "../../../src/shared/constants/providers.ts";
 import { estimateTokens } from "../contextManager.ts";
 import { getResolvedModelCapabilities } from "../modelCapabilities.ts";
 import { parseModel } from "../model.ts";
@@ -533,7 +530,9 @@ export function isVisionIncompatibleTarget(
 ): boolean {
   if (!requirements.requiresVision) return false;
   const capabilities = getResolvedModelCapabilities(target.modelStr);
-  return capabilities.supportsVision !== true;
+  // Mirror of the #image-fix above: unknown (null) counts as capable so
+  // failover still has candidates when no model has registry vision data.
+  return capabilities.supportsVision === false;
 }
 
 /**
@@ -575,7 +574,9 @@ function getTargetCompatibilityFailures(
   // a text-only model (e.g. ministral) ended up answering "image not provided".
   // #8488: when none qualify the filter fails closed (empty list) unless the
   // operator opts into compatFilterFailOpen.
-  if (requirements.requiresVision && capabilities.supportsVision !== true) {
+  // #image-fix: only a PROVEN false rejects; null (unknown) passes so custom/stealth
+  // models without capability data can still receive image requests.
+  if (requirements.requiresVision && capabilities.supportsVision === false) {
     failures.push("vision");
   }
 

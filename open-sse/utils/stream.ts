@@ -34,6 +34,7 @@ import {
   sanitizeStreamingChunk,
 } from "../handlers/responseSanitizer.ts";
 import { isFeatureFlagEnabled } from "@/shared/utils/featureFlags";
+import { filterDegenerateToolCalls, isDegenerateToolCall } from "./toolCallSanitizer.ts";
 import {
   shouldDropResponsesCommentaryEvent,
   createTranslateCommentaryFilter,
@@ -188,6 +189,47 @@ type ToolCall = {
   type: string;
   function: { name: string; arguments: string };
 };
+
+/**
+ * Rebuild a buffered passthrough tool-call chunk keeping only fragments whose
+ * tool-call index survives the degenerate-call filter, renumbering the kept
+ * indices to be contiguous. Every kept fragment is renumbered whenever ANY
+ * stripping occurred (not just in chunks that lost a fragment), so the client
+ * accumulates all fragments of a surviving call under the same new index.
+ * Returns `null` when the chunk has nothing left to forward (its only payload
+ * was stripped tool-call fragments).
+ */
+function stripDegenerateToolCallFragments(
+  chunk: JsonRecord,
+  nextIndexByOldIndex: ReadonlyMap<number, number>
+): JsonRecord | null {
+  const choices = Array.isArray(chunk.choices) ? chunk.choices : null;
+  if (!choices || choices.length === 0) return chunk;
+  const choice = asRecord(choices[0]);
+  const delta = asRecord(choice.delta);
+  if (!Array.isArray(delta.tool_calls) || delta.tool_calls.length === 0) return chunk;
+
+  const kept: unknown[] = [];
+  let changed = false;
+  for (const rawTc of delta.tool_calls) {
+    const tc = asRecord(rawTc);
+    const oldIndex = typeof tc.index === "number" ? tc.index : Number.NaN;
+    const nextIndex = nextIndexByOldIndex.get(oldIndex);
+    if (nextIndex === undefined) {
+      changed = true; // degenerate fragment dropped
+      continue;
+    }
+    if (nextIndex !== oldIndex) changed = true; // index renumbered
+    kept.push({ ...tc, index: nextIndex });
+  }
+  if (!changed) return chunk;
+  if (kept.length === 0) return null;
+
+  return {
+    ...chunk,
+    choices: [{ ...choice, delta: { ...delta, tool_calls: kept } }, ...choices.slice(1)],
+  };
+}
 
 type UsageTokenRecord = Record<string, number>;
 
@@ -745,6 +787,25 @@ export function createSSEStream(options: StreamOptions = {}) {
   /** Passthrough: accumulate tool_calls deltas for call log responseBody */
   const passthroughToolCalls = new Map<string, ToolCall>();
   let passthroughToolCallSeq = 0;
+  /**
+   * Passthrough degenerate-tool-call gate: tool_calls delta chunks are held
+   * back until the stream resolves (finish_reason or EOF), then degenerate
+   * calls (empty/missing function name, or arguments that are not a JSON
+   * object — e.g. `arguments: "true"` from deepseek-v4-flash via
+   * opencode-zen) are stripped before the buffered fragments reach the
+   * client. Fails open (forwards live) if the buffer ever overflows.
+   */
+  const passthroughBufferedToolCallChunks: Array<{ output: string; clientPayload: unknown }> = [];
+  let passthroughToolCallsBuffered = false;
+  let passthroughToolCallBufferBytes = 0;
+  // Sticky: once the gate fails open (buffer overflow), never re-buffer later
+  // tool-call chunks. Without this, chunks after the overflow get held again
+  // and flushed at finish while the pre-overflow chunks (including the head
+  // chunk carrying the tool-call id+name) were already forwarded live — the
+  // client then assembles a tool call with only the tail argument fragments
+  // (empty name/id).
+  let passthroughToolCallGateDisabled = false;
+  const PASSTHROUGH_TOOL_CALL_BUFFER_MAX_BYTES = 256 * 1024;
   const allowedToolNames = extractAllowedToolNames(body);
   let skipPassthroughEvent = false;
   const thinkState = initThinkState(mode === STREAM_MODE.PASSTHROUGH, provider, model);
@@ -853,6 +914,110 @@ export function createSSEStream(options: StreamOptions = {}) {
 
   const clearPendingPassthroughEvent = () => {
     passthroughEventPrefix.clear();
+  };
+
+  /**
+   * Resolve the degenerate-tool-call gate buffer (PASSTHROUGH mode): strip
+   * degenerate tool calls (empty/missing name, or arguments that are not a
+   * JSON object) from the held chunks AND from `finishChunk`'s own delta
+   * (the upstream may bundle the final arguments fragment with the
+   * finish_reason), enqueue what survives, and demote the finish chunk's
+   * `finish_reason` from `tool_calls` to `stop` when every call was
+   * stripped. Returns true when `finishChunk` was mutated.
+   */
+  const resolvePassthroughToolCallBuffer = (
+    finishChunk: JsonRecord | null,
+    controller: TransformStreamDefaultController<Uint8Array>
+  ): boolean => {
+    let demotedFinish = false;
+    const degenerateKeys: string[] = [];
+    for (const [key, tc] of passthroughToolCalls) {
+      if (isDegenerateToolCall(tc.function)) degenerateKeys.push(key);
+    }
+
+    if (degenerateKeys.length > 0) {
+      const survivors = [...passthroughToolCalls.entries()]
+        .filter(([key]) => !degenerateKeys.includes(key))
+        .sort((a, b) => a[1].index - b[1].index);
+      const nextIndexByOldIndex = new Map<number, number>();
+      survivors.forEach(([, tc], i) => nextIndexByOldIndex.set(tc.index, i));
+
+      for (const buffered of passthroughBufferedToolCallChunks) {
+        const rebuilt = stripDegenerateToolCallFragments(
+          asRecord(buffered.clientPayload),
+          nextIndexByOldIndex
+        );
+        if (!rebuilt) continue;
+        const rebuiltOutput = `data: ${JSON.stringify(rebuilt)}\n\n`;
+        const prefixed = passthroughEventPrefix.prefixData(rebuiltOutput, rebuiltOutput);
+        reqLogger?.appendConvertedChunk?.(prefixed);
+        controller.enqueue(encoder.encode(prefixed));
+        clientPayloadCollector.push(rebuilt);
+      }
+
+      // The finish chunk may itself carry tool-call fragments (final
+      // arguments + finish_reason in one SSE event) — strip/renumber them.
+      if (finishChunk && Array.isArray(finishChunk.choices) && finishChunk.choices.length > 0) {
+        const rebuiltFinish = stripDegenerateToolCallFragments(finishChunk, nextIndexByOldIndex);
+        if (rebuiltFinish) {
+          Object.assign(finishChunk, rebuiltFinish);
+        } else {
+          const choice = asRecord(finishChunk.choices[0]);
+          const delta = asRecord(choice.delta);
+          if (Array.isArray(delta.tool_calls)) {
+            delete delta.tool_calls;
+            choice.delta = delta;
+            finishChunk.choices[0] = choice;
+          }
+        }
+      }
+
+      for (const key of degenerateKeys) passthroughToolCalls.delete(key);
+      if (passthroughToolCalls.size === 0) {
+        // Everything was degenerate — demote the finish so clients don't wait
+        // on tool runs that will never execute.
+        passthroughHasToolCalls = false;
+        if (finishChunk && Array.isArray(finishChunk.choices) && finishChunk.choices.length > 0) {
+          const choice = asRecord(finishChunk.choices[0]);
+          choice.finish_reason = "stop";
+          finishChunk.choices[0] = choice;
+          demotedFinish = true;
+          // #5297 parity: if nothing else was produced, emit a placeholder
+          // chunk before the finish so clients don't see finish=stop with
+          // null content (which makes the agent loop terminate).
+          if (!passthroughAccumulatedContent.trim() && !passthroughAccumulatedReasoning.trim()) {
+            const placeholder =
+              "[Model returned an empty response — please continue with the next steps or call a tool]";
+            const placeholderChunk = buildSyntheticChatChunk(passthroughResponsesId, model, {
+              content: placeholder,
+            });
+            const placeholderOutput = `data: ${JSON.stringify(placeholderChunk)}\n\n`;
+            reqLogger?.appendConvertedChunk?.(placeholderOutput);
+            controller.enqueue(encoder.encode(placeholderOutput));
+            clientPayloadCollector.push(placeholderChunk);
+            passthroughAccumulatedContent = appendBoundedText(
+              passthroughAccumulatedContent,
+              placeholder
+            );
+            console.warn(
+              `[STREAM] Stripped degenerate tool calls, synthesized content placeholder (${provider || "provider"}:${model || "unknown"}) — sessionId=${sessionId}`
+            );
+          }
+        }
+      }
+    } else {
+      // All held calls are valid — forward the buffered chunks verbatim.
+      for (const buffered of passthroughBufferedToolCallChunks) {
+        reqLogger?.appendConvertedChunk?.(buffered.output);
+        controller.enqueue(encoder.encode(buffered.output));
+        if (buffered.clientPayload) clientPayloadCollector.push(buffered.clientPayload);
+      }
+    }
+
+    passthroughBufferedToolCallChunks.length = 0;
+    passthroughToolCallBufferBytes = 0;
+    passthroughToolCallsBuffered = false;
+    return demotedFinish;
   };
 
   const applyTextualToolCallStreamingGuard = (parsed: Record<string, unknown>) => {
@@ -1207,6 +1372,8 @@ export function createSSEStream(options: StreamOptions = {}) {
             let injectedUsage = false;
             let clientPayload: unknown = null;
             let failurePayload: StreamFailurePayload | null = null;
+            let passthroughChunkHasToolCalls = false;
+            let passthroughChunkResolved = false;
 
             if (skipPassthroughEvent) {
               if (!trimmed) {
@@ -1215,7 +1382,6 @@ export function createSSEStream(options: StreamOptions = {}) {
               }
               continue;
             }
-
             // Drop whole keepalive event blocks — strict OpenAI-compatible SDKs
             // try to JSON.parse empty keepalive payloads and crash.
             if (/^event:\s*keepalive\b/i.test(trimmed)) {
@@ -1780,6 +1946,7 @@ export function createSSEStream(options: StreamOptions = {}) {
 
                   // T18: Track if we saw tool calls & accumulate for call log
                   if (delta?.tool_calls && delta.tool_calls.length > 0) {
+                    passthroughChunkHasToolCalls = true;
                     passthroughHasToolCalls = true;
                     lastToolCallChunkTime = now;
                     for (const tc of delta.tool_calls) {
@@ -1919,6 +2086,58 @@ export function createSSEStream(options: StreamOptions = {}) {
                   }
                 }
 
+                // Degenerate tool-call gate: strip empty/"true" tool calls
+                // (deepseek-v4-flash via opencode-zen) once the stream resolves
+                // them, before the finish chunk goes out. When every call was
+                // degenerate the finish is demoted to `stop`; the output is
+                // rebuilt here unconditionally so any finish-chunk delta
+                // mutations (fragment stripping / finish demotion) reach the
+                // client.
+                if (
+                  Boolean((parsed as JsonRecord | null)?.choices?.[0]?.finish_reason) &&
+                  passthroughToolCallsBuffered
+                ) {
+                  resolvePassthroughToolCallBuffer(parsed as JsonRecord, controller);
+                  passthroughChunkResolved = true;
+                  output = `data: ${JSON.stringify(parsed)}\n\n`;
+                  injectedUsage = true;
+                }
+
+                // Empty-stop guard (direct path): some upstreams (observed:
+                // nara/qwen-3.8-max-free) end a turn with a terminal
+                // finish_reason but zero content/reasoning/tool-call deltas.
+                // Forwarding that verbatim makes strict agent loops (omp) treat
+                // the turn as empty and burn their empty-stop retries. Synthesize
+                // a placeholder content chunk BEFORE the finish chunk so the
+                // client sees a non-empty turn. Mirrors the #5297
+                // degenerate-strip placeholder in resolvePassthroughToolCallBuffer.
+                if (
+                  Boolean((parsed as JsonRecord | null)?.choices?.[0]?.finish_reason) &&
+                  (parsed as JsonRecord).choices?.[0]?.finish_reason !== "tool_calls" &&
+                  (parsed as JsonRecord).choices?.[0]?.finish_reason !== "length" &&
+                  (parsed as JsonRecord).choices?.[0]?.finish_reason !== "content_filter" &&
+                  !passthroughHasToolCalls &&
+                  !passthroughAccumulatedContent.trim() &&
+                  !passthroughAccumulatedReasoning.trim()
+                ) {
+                  const emptyStopPlaceholder =
+                    "[Model returned an empty response — please continue with the next steps or call a tool]";
+                  const emptyStopChunk = buildSyntheticChatChunk(passthroughResponsesId, model, {
+                    content: emptyStopPlaceholder,
+                  });
+                  const emptyStopOutput = `data: ${JSON.stringify(emptyStopChunk)}\n\n`;
+                  reqLogger?.appendConvertedChunk?.(emptyStopOutput);
+                  controller.enqueue(encoder.encode(emptyStopOutput));
+                  clientPayloadCollector.push(emptyStopChunk);
+                  passthroughAccumulatedContent = appendBoundedText(
+                    passthroughAccumulatedContent,
+                    emptyStopPlaceholder
+                  );
+                  console.warn(
+                    `[STREAM] Empty stop — synthesized content placeholder (${provider || "provider"}:${model || "unknown"}) — sessionId=${sessionId}`
+                  );
+                }
+
                 clientPayload = parsed;
               } catch {
                 // Skip non-JSON data lines silently — don't forward garbage to clients.
@@ -1937,6 +2156,55 @@ export function createSSEStream(options: StreamOptions = {}) {
             }
 
             output = passthroughEventPrefix.prefixData(output, line);
+
+            // Degenerate tool-call gate (cont.): hold tool-call delta chunks
+            // until the stream resolves them (finish_reason or EOF), so
+            // degenerate calls can be stripped before reaching the client.
+            // Fails open (forwards live) on buffer overflow.
+            if (passthroughChunkHasToolCalls) {
+              const clientIsFinishChunk = Boolean(
+                (clientPayload as JsonRecord | null)?.choices?.[0]?.finish_reason
+              );
+              if (
+                !passthroughToolCallGateDisabled &&
+                passthroughToolCallBufferBytes + output.length <=
+                  PASSTHROUGH_TOOL_CALL_BUFFER_MAX_BYTES
+              ) {
+                if (clientIsFinishChunk && passthroughChunkResolved) {
+                  // Part A already resolved the held buffer AND this chunk's
+                  // own delta — nothing left to hold; fall through to the
+                  // single normal enqueue below.
+                } else if (clientIsFinishChunk) {
+                  // First tool-call chunk IS the finish chunk — resolve the
+                  // buffer (empty) plus this chunk's own fragments inline,
+                  // then fall through to the single normal enqueue.
+                  resolvePassthroughToolCallBuffer(clientPayload as JsonRecord, controller);
+                  output = `data: ${JSON.stringify(clientPayload)}\n\n`;
+                  injectedUsage = true;
+                } else {
+                  // Held — flushed by the finish-chunk resolve above or the
+                  // stream flush when the upstream never sends a finish.
+                  passthroughBufferedToolCallChunks.push({ output, clientPayload });
+                  passthroughToolCallBufferBytes += output.length;
+                  passthroughToolCallsBuffered = true;
+                  continue;
+                }
+              } else {
+                // Buffer overflow — fail open: flush everything already held
+                // (the head chunk carrying the tool-call id+name MUST reach the
+                // client before the tail fragments), then forward live. The
+                // gate stays disabled for the rest of this stream.
+                for (const buffered of passthroughBufferedToolCallChunks) {
+                  reqLogger?.appendConvertedChunk?.(buffered.output);
+                  controller.enqueue(encoder.encode(buffered.output));
+                  if (buffered.clientPayload) clientPayloadCollector.push(buffered.clientPayload);
+                }
+                passthroughToolCallGateDisabled = true;
+                passthroughToolCallsBuffered = false;
+                passthroughBufferedToolCallChunks.length = 0;
+                passthroughToolCallBufferBytes = 0;
+              }
+            }
 
             if (clientPayload) {
               clientPayloadCollector.push(clientPayload);
@@ -2346,6 +2614,14 @@ export function createSSEStream(options: StreamOptions = {}) {
             }
             clearPendingPassthroughEvent();
 
+            if (passthroughToolCallsBuffered) {
+              // Upstream closed without a finish chunk — resolve the held
+              // tool-call buffer (strips degenerate calls) before the
+              // synthetic terminal chunk below so the finish_reason and
+              // call log reflect the surviving calls.
+              resolvePassthroughToolCallBuffer(null, controller);
+            }
+
             if (passthroughBufferedTextualToolCallContent) {
               // Flush any remaining buffered content as plain text.
               // Previously gated on !includes("Arguments:"), which silently dropped
@@ -2418,6 +2694,33 @@ export function createSSEStream(options: StreamOptions = {}) {
               // (pi CLI) reject the stream with "Stream ended without finish_reason".
               // Synthesize a terminal chunk when the upstream omitted one.
               if (shouldEmitDoneTerminator && !passthroughSawFinishReason) {
+                // Same empty-stop guard as the inline finish-chunk path: an
+                // upstream that closes the stream with no finish_reason AND no
+                // content would otherwise yield a synthesized clean `stop` with
+                // zero content — the exact shape that burns strict agent-loop
+                // empty-stop retries (observed: nara/qwen-3.8-max-free).
+                if (
+                  !passthroughHasToolCalls &&
+                  !passthroughAccumulatedContent.trim() &&
+                  !passthroughAccumulatedReasoning.trim()
+                ) {
+                  const emptyStopPlaceholder =
+                    "[Model returned an empty response — please continue with the next steps or call a tool]";
+                  const emptyStopChunk = buildSyntheticChatChunk(passthroughResponsesId, model, {
+                    content: emptyStopPlaceholder,
+                  });
+                  const emptyStopOutput = `data: ${JSON.stringify(emptyStopChunk)}\n\n`;
+                  reqLogger?.appendConvertedChunk?.(emptyStopOutput);
+                  controller.enqueue(encoder.encode(emptyStopOutput));
+                  clientPayloadCollector.push(emptyStopChunk);
+                  passthroughAccumulatedContent = appendBoundedText(
+                    passthroughAccumulatedContent,
+                    emptyStopPlaceholder
+                  );
+                  console.warn(
+                    `[STREAM] Empty stop — synthesized content placeholder (${provider || "provider"}:${model || "unknown"}) — sessionId=${sessionId}`
+                  );
+                }
                 const syntheticFinishChunk = buildSyntheticChatChunk(
                   passthroughResponsesId,
                   model,
@@ -2750,7 +3053,7 @@ export function createSSEStream(options: StreamOptions = {}) {
               const prompt = Number(u?.prompt_tokens ?? u?.input_tokens ?? 0);
               const completion = Number(u?.completion_tokens ?? u?.output_tokens ?? 0);
               let content = (state?.accumulatedContent ?? "").trim() || "";
-              const normalizedToolCalls: ToolCall[] = state?.toolCalls?.size
+              let normalizedToolCalls: ToolCall[] = state?.toolCalls?.size
                 ? [...state.toolCalls.values()]
                     .map((tc: Record<string, unknown>): ToolCall => ({
                       id: tc.id != null ? String(tc.id) : null,
@@ -2778,6 +3081,11 @@ export function createSSEStream(options: StreamOptions = {}) {
               } else if (containsMalformedTextualToolCall(content, allowedToolNames)) {
                 content = "";
               }
+              // Strip degenerate tool calls (empty/missing name, or arguments
+              // that are not a JSON object — e.g. `"true"` from
+              // deepseek-v4-flash via opencode-zen) so the call log and the
+              // #5297 emptiness check below see only real calls.
+              normalizedToolCalls = filterDegenerateToolCalls(normalizedToolCalls);
               // #5297 fix: detect truly-empty responses and synthesize non-empty content
               // (same logic as passthrough path — see comment there)
               if (!content.trim() && normalizedToolCalls.length === 0) {

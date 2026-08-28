@@ -66,6 +66,18 @@ const REASONING_UNSUPPORTED_PATTERNS = [
   "stable-diffusion",
 ];
 
+// Explicit allowlist checked BEFORE REASONING_UNSUPPORTED_PATTERNS. The #1361
+// blocklist entry "antigravity/gemini-" is a broad prefix veto that correctly
+// strips thinking params for the fixed 3.5/3.6 tier ids (which reject explicit
+// thinking config upstream), but it also matches the dynamic-thinking
+// `gemini-3.7-flash-tiered` model, which genuinely accepts and honors an
+// explicit thinkingBudget (verified live: budget 0 → 490 thought tokens,
+// 32768 → 2091). Without this allowlist, heuristicReasoning() returns false
+// for the tiered id, which (a) reports reasoning:false in the catalog and
+// (b) makes applyThinkingBudget() strip reasoning_effort before translation,
+// silently downgrading every request to low-effort dynamic thinking.
+const REASONING_SUPPORTED_OVERRIDES = ["antigravity/gemini-3.7-flash-tiered"];
+
 /** Catalog/API surface types that are not chat completions. */
 const NON_CHAT_SURFACE_TYPES = new Set([
   "audio",
@@ -211,6 +223,11 @@ function heuristicToolCalling(modelStr: string): boolean {
 function heuristicReasoning(modelStr: string): boolean {
   const normalized = String(modelStr || "").toLowerCase();
   if (!normalized) return true;
+  const allowed = REASONING_SUPPORTED_OVERRIDES.some(
+    (pattern) =>
+      normalized === pattern || normalized.endsWith(`/${pattern}`) || normalized.includes(pattern)
+  );
+  if (allowed) return true;
   const blocked = REASONING_UNSUPPORTED_PATTERNS.some(
     (pattern) =>
       normalized === pattern || normalized.endsWith(`/${pattern}`) || normalized.includes(pattern)

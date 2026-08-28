@@ -172,6 +172,33 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     thinkingBudgetCap: 0,
   },
 
+  // ── Gemini 3.7 Flash (stable, 2026-08-13) ───────────────────────
+  // Mirrors the flash-tier spec family: 1M context, tools+vision, explicit
+  // thinking params rejected upstream (tier selected by the model id).
+  "gemini-3.7-flash": {
+    ...GEMINI_35_FLASH_MODEL_SPEC,
+  },
+
+  // ── Gemini 3.7 Flash Tiered (Antigravity dynamic-thinking model) ──
+  // Upstream `gemini-3.7-flash-tiered` accepts and honors an explicit
+  // thinkingBudget (verified live: budget 0 → 490 thought tokens, 32768 →
+  // 2091). Unlike the fixed 3.6 tier ids it is a single dynamic model, so it
+  // needs its own exact spec: without one, getCanonicalModelSpecId() prefix-
+  // matches `gemini-3.7-flash` (supportsThinking:false) and
+  // shouldStripCloudCodeThinking() strips the thinking config, silently
+  // downgrading every request to low-effort dynamic thinking. The exact key
+  // wins over the prefix phase; defaultThinkingBudget keeps no-knob requests
+  // at the highest budget too.
+  "gemini-3.7-flash-tiered": {
+    maxOutputTokens: 65536,
+    contextWindow: 1048576,
+    defaultThinkingBudget: 32768,
+    thinkingBudgetCap: 32768,
+    supportsThinking: true,
+    supportsTools: true,
+    supportsVision: true,
+  },
+
   // ── Gemini 3.6 Flash (Antigravity live tiers) ───────────────────
   // The model id itself selects the upstream 10k/4k/1k reasoning tier. Antigravity
   // still rejects client-supplied thinking parameters, so keep the explicit-parameter
@@ -508,6 +535,9 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
   },
 
   // ── Z.AI GLM-5.2 (1M context, 128K max output, effort tiers) ────
+  // Text-input ONLY: NVIDIA NIM model card lists "Input Type(s): Text" and Z.ai
+  // documents vision only for the separate GLM-5V/GLM-4.xV family (glm-5v-turbo
+  // etc.). Do NOT set supportsVision here — the #8332 gate must fail closed.
   "glm-5.2": {
     maxOutputTokens: 131072,
     contextWindow: 1000000,

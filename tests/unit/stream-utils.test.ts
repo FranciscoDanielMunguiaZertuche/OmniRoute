@@ -28,6 +28,13 @@ const textEncoder = new TextEncoder();
 // PR #3399 intentionally changed the synthetic empty-response text to "" so that
 // proxy internals no longer leak into chat history. Tests assert on the new behavior.
 const SYNTHETIC_CLAUDE_EMPTY_RESPONSE_TEXT = "";
+// Fix 2 (empty-stop guard): when a stream ends in a clean `stop` with zero
+// content/reasoning/tool-calls — including after the textual-tool-call
+// suppressor strips the only content — a placeholder nudge is synthesized so
+// strict agent loops (omp) don't burn their empty-stop retries. Mirrors the
+// #5297 degenerate-strip placeholder.
+const EMPTY_STOP_PLACEHOLDER =
+  "[Model returned an empty response — please continue with the next steps or call a tool]";
 
 async function readTransformed(chunks, options) {
   const source = new ReadableStream({
@@ -545,7 +552,7 @@ Arguments: {"path":"/opt/OmniRoute/src","target":"files"}`;
 
   const choice = onCompletePayload.responseBody.choices[0];
   assert.equal(choice.finish_reason, "stop");
-  assert.equal(choice.message.content, null);
+  assert.equal(choice.message.content, EMPTY_STOP_PLACEHOLDER);
   assert.equal(choice.message.tool_calls, undefined);
   assert.doesNotMatch(text, /search_files_ide/);
   assert.doesNotMatch(JSON.stringify(onCompletePayload.responseBody), /search_files_ide/);
@@ -586,7 +593,7 @@ test("createSSEStream passthrough suppresses malformed textual tool-call content
 
   const choice = onCompletePayload.responseBody.choices[0];
   assert.equal(choice.finish_reason, "stop");
-  assert.equal(choice.message.content, null);
+  assert.equal(choice.message.content, EMPTY_STOP_PLACEHOLDER);
   assert.equal(choice.message.tool_calls, undefined);
   // PR #3355 bug-2 fix: flush now always emits the buffer as plain text (not swallowed).
   assert.match(text, /\[Tool call: terminal\]/);
@@ -627,7 +634,7 @@ test("createSSEStream suppresses malformed compact textual tool-call content", a
 
   const choice = onCompletePayload.responseBody.choices[0];
   assert.equal(choice.finish_reason, "stop");
-  assert.equal(choice.message.content, null);
+  assert.equal(choice.message.content, EMPTY_STOP_PLACEHOLDER);
   assert.equal(choice.message.tool_calls, undefined);
   assert.doesNotMatch(JSON.stringify(onCompletePayload.responseBody), /\[Tool call:/);
 });

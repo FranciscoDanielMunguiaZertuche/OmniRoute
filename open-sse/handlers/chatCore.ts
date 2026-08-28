@@ -1935,7 +1935,33 @@ export async function handleChatCore({
   // wants JSON; the non-streaming branch below accumulates the SSE and converts
   // it back to JSON (same mechanism already used for Claude-Code-compatible
   // providers via isClaudeCodeCompatible).
-  const upstreamStream = stream || isClaudeCodeCompatible || providerRequiresStreaming;
+  // zen-stream-image workaround: the opencode zen upstream fails streaming
+  // requests that carry image parts ("Endpoint is unavailable", observed 2026-08)
+  // while the identical payload succeeds non-streaming. Force the UPSTREAM call
+  // to JSON for image-bearing requests on zen-family providers; #3089's
+  // maybeConvertJsonBodyToSse re-wraps the JSON body as SSE for streaming clients.
+  const upstreamRequestHasImage = (() => {
+    const msgs = (translatedBody ?? (finalBody as Record<string, unknown> | null))?.messages;
+    if (!Array.isArray(msgs)) return false;
+    const scan = (v: unknown, depth = 0): boolean => {
+      if (depth > 8 || v === null || v === undefined) return false;
+      if (Array.isArray(v)) return v.some((e) => scan(e, depth + 1));
+      if (typeof v === "object") {
+        const o = v as Record<string, unknown>;
+        if (typeof o.type === "string" && /image/i.test(o.type)) return true;
+        return Object.values(o).some((e) => scan(e, depth + 1));
+      }
+      return false;
+    };
+    return scan(msgs);
+  })();
+  const zenImageForceNonStream =
+    upstreamRequestHasImage &&
+    !providerRequiresStreaming &&
+    !isClaudeCodeCompatible &&
+    (provider === "opencode-zen" || provider === "opencode");
+  const upstreamStream =
+    zenImageForceNonStream || stream || isClaudeCodeCompatible || providerRequiresStreaming;
   let ccSessionId: string | null = null;
   const stripTypes = getStripTypesForProviderModel(provider || "", model || "");
 

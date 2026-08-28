@@ -318,6 +318,21 @@ import {
   reorderByTaskWeight,
 } from "./taskAwareRouting.ts";
 
+/**
+ * Cooldown half-open probe: every Nth request may attempt a cooled provider,
+ * giving it a chance to observe a success and reset its cooldown entry via
+ * recordProviderSuccess. Prevents the observed deadlock where one upstream
+ * storm exiled healthy providers for hours (2026-08-24).
+ */
+const COOLDOWN_PROBE_EVERY = 12;
+const cooldownProbeCounters = new Map<string, number>();
+function shouldProbeCooledProvider(provider: unknown): boolean {
+  const key = String(provider);
+  const next = ((cooldownProbeCounters.get(key) ?? 0) + 1) | 0;
+  cooldownProbeCounters.set(key, next);
+  return next % COOLDOWN_PROBE_EVERY === 0;
+}
+
 export { RESET_WINDOW_NAMES, QUOTA_SOFT_DEPRIORITIZE_FACTOR, setCandidateQuotaSoftPenalty };
 export { scoreAutoTargets, expandAutoComboCandidatePool };
 export type { SingleModelTarget, ResolvedComboTarget };
@@ -1162,8 +1177,8 @@ export async function handleComboChat({
         const provider = target.provider;
 
         const cb = getCircuitBreaker(provider);
-        if (cb.getStatus().state === "OPEN") {
-          log.info("COMBO", `Skipping ${modelStr} — circuit breaker OPEN for ${provider}`);
+        if (cb.getStatus().state === "OPEN" && !shouldProbeCooledProvider(provider)) {
+          log.info("COMBO", `Skipping ${modelStr} — circuit breaker OPEN for ${provider}${""}`);
           if (i > 0) fallbackCount++;
           return null;
         }
@@ -1171,7 +1186,8 @@ export async function handleComboChat({
         if (
           resilienceSettings.providerCooldown.enabled &&
           Boolean(provider && provider !== "unknown") &&
-          isProviderInCooldown(provider, target.connectionId ?? undefined, resilienceSettings)
+          isProviderInCooldown(provider, target.connectionId ?? undefined, resilienceSettings) &&
+          !shouldProbeCooledProvider(provider)
         ) {
           log.info("COMBO", `Skipping ${modelStr} — provider ${provider} in global cooldown`);
           if (i > 0) fallbackCount++;
@@ -1808,6 +1824,9 @@ export async function handleComboChat({
               })();
             }
 
+            // Success resets the tracker entry so a healed provider re-enters
+            // rotation immediately instead of waiting out its scaled cooldown.
+            recordProviderSuccess(provider, effectiveConnectionId || undefined);
             return { ok: true, response: result };
           }
 
@@ -2901,9 +2920,13 @@ async function handleRoundRobinCombo({
       Boolean(provider && provider !== "unknown") &&
       isProviderInCooldown(provider, target.connectionId as string | undefined, resilienceSettings)
     ) {
-      log.info("COMBO-RR", `Skipping ${modelStr} — provider ${provider} in global cooldown`);
-      if (offset > 0) fallbackCount++;
-      continue;
+      if (!shouldProbeCooledProvider(provider)) {
+        log.info("COMBO-RR", `Skipping ${modelStr} — provider ${provider} in global cooldown`);
+        if (offset > 0) fallbackCount++;
+        continue;
+      }
+      // Half-open probe: this request won the every-Nth lottery against a
+      // cooled provider — let it through so a success resets its entry.
     }
 
     // #1731 / #1731v2: skip targets already known-exhausted this request (shared predicate).
@@ -3403,10 +3426,15 @@ async function handleRoundRobinCombo({
             // request also skips this key. Future combo requests (after the
             // 1-3s combo retry loop) will retry it once the backoff expires.
             if (targetWithConnection.connectionId) {
-              recordKeyBackoff(targetWithConnection.connectionId);
+              // Only 429 gets the per-provider (rate-limit-aware) short backoff;
+              // 5xx/524/WAF keep the 60s default so a hung/dead key isn't retried
+              // too eagerly. 524 hang-escalation via recordKeyTimeout is untouched.
+              const backoffProvider =
+                result.status === 429 ? targetWithConnection.provider : undefined;
+              recordKeyBackoff(targetWithConnection.connectionId, backoffProvider);
               log.info(
                 "COMBO-RR",
-                `${modelStr} connection ${targetWithConnection.connectionId} → ${getDefaultBackoffMs()}ms fixed backoff (status ${result.status})`
+                `${modelStr} connection ${targetWithConnection.connectionId} → ${getDefaultBackoffMs(backoffProvider)}ms fixed backoff (status ${result.status})`
               );
             }
             log.info(
@@ -3502,14 +3530,44 @@ async function handleRoundRobinCombo({
       log,
       strategy: "round-robin",
     });
-    if (compatFallbackResult) {
-      recordComboRequest(combo.name, null, {
-        success: true,
-        latencyMs: Date.now() - startTime,
-        fallbackCount,
-        strategy: "round-robin",
-      });
-      return compatFallbackResult;
+    if (compatFallbackResult?.ok) {
+      // #ox-reasoning guard: the compat tier bypasses the per-target loop, so its
+      // response never ran the quality shield. Without this gate, a reasoning-only /
+      // empty-stop stream rejected on every normal target gets re-injected here as a
+      // "success" (observed live 2026-08-23: omp received lone thinking blocks via
+      // this path minutes after the shield was tightened). Validate before accepting;
+      // on rejection fall through to the normal error surface so the combo retries.
+      let compatRejected = false;
+      try {
+        const compatClone = compatFallbackResult.clone();
+        const compatQuality = await validateResponseQuality(
+          compatClone,
+          clientRequestedStream,
+          log,
+          config.responseValidation
+        );
+        releaseQualityClone(compatClone, compatFallbackResult, compatQuality);
+        if (!compatQuality.valid) {
+          releaseRejectedQualityResponse(compatClone, compatFallbackResult);
+          log.warn(
+            "COMBO",
+            `Last-resort compat fallback response failed quality check (${compatQuality.reason}) — rejecting instead of surfacing`
+          );
+          compatRejected = true;
+        }
+      } catch {
+        // Quality check threw — keep the response rather than dropping a possibly
+        // valid last-resort success behind an infrastructure error.
+      }
+      if (!compatRejected) {
+        recordComboRequest(combo.name, null, {
+          success: true,
+          latencyMs: Date.now() - startTime,
+          fallbackCount,
+          strategy: "round-robin",
+        });
+        return compatFallbackResult;
+      }
     }
   }
 

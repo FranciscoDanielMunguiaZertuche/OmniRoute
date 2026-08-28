@@ -1625,7 +1625,11 @@ export function checkFallbackError(
       !errorStr.toLowerCase().includes("hour quota") &&
       !errorStr.toLowerCase().includes("quota has been exceeded")
     ) {
-      return resolveApiKeyForbiddenFallback(errorStr, buildRetryableFallback, RateLimitReason.AUTH_ERROR);
+      return resolveApiKeyForbiddenFallback(
+        errorStr,
+        buildRetryableFallback,
+        RateLimitReason.AUTH_ERROR
+      );
     }
   }
 

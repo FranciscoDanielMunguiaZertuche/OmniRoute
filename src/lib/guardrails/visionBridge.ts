@@ -69,7 +69,10 @@ async function getComboVisionBridgeDecision(model: string): Promise<ComboVisionB
         const targetModel = s.model;
         if (typeof targetModel === "string") {
           const caps = getResolvedModelCapabilities(targetModel);
-          if (caps.supportsVision !== true) {
+          // Treat unknown (null) as vision-capable: stealth/custom models often lack
+          // registry data while the upstream actually accepts images. Only a PROVEN
+          // `false` justifies interception (mirror of the live dist patch).
+          if (caps.supportsVision === false) {
             return "process";
           }
         } else {

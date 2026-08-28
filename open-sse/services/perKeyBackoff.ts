@@ -34,6 +34,35 @@
 const BACKOFF_MS_DEFAULT = 60 * 1000;
 
 /**
+ * Per-provider 429 backoff (2026-08-12). The 60s default is right for
+ * quota-style upstreams but WRONG for rate-limit-style upstreams that recover
+ * in seconds — a 60s bench turns a transient throttle into a full-minute
+ * lockout, and under client retry amplification (omp retries ×3, combo fail-fast
+ * retries) every key gets benched simultaneously → "all round-robin unavailable"
+ * 503 even though the upstream intermittently returns 200s.
+ *
+ *  - nvidia: NIM free tier is a per-key rate limit (not quota); keys recover in
+ *    seconds and intermittently succeed mid-storm. 10s lets the combo retry each
+ *    key ~6×/min to catch a 200 without hammering a saturated host (8 keys × 6 =
+ *    48/min, well under typical NIM per-key RPM aggregate).
+ *  - opencode-zen: free-tier quota storms last hours (recovers ~UTC midnight).
+ *    60s × 8 keys = 480 wasted attempts/hr against a dead quota; 300s drops it
+ *    to 96/hr and still rediscovers the provider within 5 min of recovery.
+ *
+ * Only 429 uses this map (see combo.ts call site — 5xx/524/WAF keep the 60s
+ * default; 524 hang-escalation via recordKeyTimeout is untouched).
+ */
+const PROVIDER_429_BACKOFF_MS: Record<string, number> = {
+  nvidia: 10 * 1000,
+  "opencode-zen": 5 * 60 * 1000,
+};
+
+export function resolve429BackoffMs(provider?: string): number {
+  if (provider && PROVIDER_429_BACKOFF_MS[provider]) return PROVIDER_429_BACKOFF_MS[provider];
+  return BACKOFF_MS_DEFAULT;
+}
+
+/**
  * Timeout health windows (2026-08-08, #combo-hang): upstream HANGS (synthesized
  * 524 from the per-target timeout runner) are tracked separately from 429s with
  * a sliding window so one dead key/egress gets quarantined instead of burning
@@ -67,12 +96,16 @@ function getNowMs(): number {
 
 export function recordKeyBackoff(
   connectionId: string,
-  backoffMs: number = BACKOFF_MS_DEFAULT
+  providerOrBackoffMs?: string | number
 ): void {
   if (!connectionId) return;
   const now = getNowMs();
   const existing = state.get(connectionId);
   const prevFailures = existing?.consecutiveFailures ?? 0;
+  const backoffMs =
+    typeof providerOrBackoffMs === "number"
+      ? providerOrBackoffMs
+      : resolve429BackoffMs(providerOrBackoffMs);
   // Fixed window: do NOT extend on consecutive failures. We want to learn
   // the true reset window, not hide it.
   state.set(connectionId, {
@@ -166,6 +199,6 @@ export function clearAllBackoffs(): void {
   state.clear();
 }
 
-export function getDefaultBackoffMs(): number {
-  return BACKOFF_MS_DEFAULT;
+export function getDefaultBackoffMs(provider?: string): number {
+  return resolve429BackoffMs(provider);
 }

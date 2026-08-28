@@ -12,8 +12,20 @@ export const naraProvider: RegistryEntry = buildOpenAiCompatibleRegistryEntry({
   id: "nara",
   baseUrl: "https://router.bynara.id/v1/chat/completions",
   models: [
+    {
+      id: "qwen-3.8-max-free",
+      name: "Qwen 3.8 Max Free",
+      contextLength: 1000000,
+      toolCalling: true,
+    },
     { id: "tencent-hy3", name: "Tencent Hy3", contextLength: 1000000 },
     { id: "mistral-large", name: "Mistral Large", contextLength: 252000, toolCalling: true },
-    { id: "mistral-medium-3-5", name: "Mistral Medium 3.5", contextLength: 256000, toolCalling: true, supportsVision: true },
+    {
+      id: "mistral-medium-3-5",
+      name: "Mistral Medium 3.5",
+      contextLength: 256000,
+      toolCalling: true,
+      supportsVision: true,
+    },
   ],
 });

@@ -538,7 +538,9 @@ export const FREE_MODEL_BUDGETS: FreeModelBudget[] = [
   { provider: "routeway", modelId: "laguna-m.1:free", displayName: "Laguna M.1 (free)", monthlyTokens: 0, creditTokens: 0, freeType: "recurring-uncapped", poolKey: "routeway-free", tos: "caution" },
   { provider: "routeway", modelId: "laguna-xs.2:free", displayName: "Laguna XS.2 (free)", monthlyTokens: 0, creditTokens: 0, freeType: "recurring-uncapped", poolKey: "routeway-free", tos: "caution" },
   { provider: "routeway", modelId: "llama-3.2-3b-instruct:free", displayName: "Llama 3.2 3B Instruct (free)", monthlyTokens: 0, creditTokens: 0, freeType: "recurring-uncapped", poolKey: "routeway-free", tos: "caution" },
+  { provider: "nara", modelId: "qwen-3.8-max-free", displayName: "Qwen 3.8 Max Free", monthlyTokens: 150000000, creditTokens: 0, freeType: "recurring-daily", poolKey: "nara-free", tos: "caution" },
   { provider: "nara", modelId: "tencent-hy3", displayName: "Tencent Hy3", monthlyTokens: 150000000, creditTokens: 0, freeType: "recurring-daily", poolKey: "nara-free", tos: "caution" },
   { provider: "nara", modelId: "mistral-large", displayName: "Mistral Large", monthlyTokens: 150000000, creditTokens: 0, freeType: "recurring-daily", poolKey: "nara-free", tos: "caution" },
   { provider: "nara", modelId: "mistral-medium-3-5", displayName: "Mistral Medium 3.5", monthlyTokens: 150000000, creditTokens: 0, freeType: "recurring-daily", poolKey: "nara-free", tos: "caution" },
+  { provider: "tokenrouter", modelId: "qwen/qwen3.8-max-free", displayName: "Qwen 3.8 Max Free (TokenRouter)", monthlyTokens: 0, creditTokens: 0, freeType: "recurring-uncapped", poolKey: "tokenrouter-free", tos: "caution" },
 ];

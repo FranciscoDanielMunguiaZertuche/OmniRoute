@@ -1,5 +1,3 @@
-"use server";
-
 import { NextResponse } from "next/server";
 import { getSupervisor } from "@/lib/services/registry";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";

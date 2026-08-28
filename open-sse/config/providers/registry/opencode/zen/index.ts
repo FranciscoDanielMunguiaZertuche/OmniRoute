@@ -94,5 +94,17 @@ export const opencode_zenProvider: RegistryEntry = {
       targetFormat: "claude",
       contextLength: 200000,
     },
+    // Ox Alpha Free (Unlimited) — live-verified 2026-08-21: keyless, vision +
+    // tools + always-on reasoning (upstream [1210] rejects effort off/xhigh;
+    // valid efforts: low|high|max). reasoning_content is interleaved on
+    // tool-use turns like big-pickle (#2900).
+    {
+      id: "x-preview-f-free",
+      name: "Ox Alpha Free (Unlimited)",
+      contextLength: 1000000,
+      supportsReasoning: true,
+      supportsVision: true,
+      interleavedField: "reasoning_content",
+    },
   ],
 };

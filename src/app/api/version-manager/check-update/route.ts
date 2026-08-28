@@ -1,5 +1,3 @@
-"use server";
-
 import { NextResponse } from "next/server";
 import { getInstalledVersion, getLatestVersion } from "@/lib/services/installers/cliproxy";
 import { requireManagementAuth } from "@/lib/api/requireManagementAuth";

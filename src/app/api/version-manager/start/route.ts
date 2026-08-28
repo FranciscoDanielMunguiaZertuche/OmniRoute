@@ -1,5 +1,3 @@
-"use server";
-
 import { NextResponse } from "next/server";
 import { getServiceRow } from "@/lib/db/versionManager";
 import { getOrInitSupervisor } from "@/app/api/services/cliproxy/_lib";

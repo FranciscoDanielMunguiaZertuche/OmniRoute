@@ -1,5 +1,3 @@
-"use server";
-
 import { NextResponse } from "next/server";
 import { requireCliToolsAuth } from "@/lib/api/requireCliToolsAuth";
 import { getCliRuntimeStatus, CLI_TOOL_IDS } from "@/shared/services/cliRuntime";
