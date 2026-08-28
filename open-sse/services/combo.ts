@@ -3580,18 +3580,62 @@ async function handleRoundRobinCombo({
     });
   }
 
+  if (!lastStatus) {
+    // FIX 2026-08-28: when NO targets were attempted (all filtered by per-key backoff
+    // or provider cooldown), don't recurse and wait — that causes the nvidia+empero
+    // combo to hang for 30s (retrying every 4s) and then Pi retries 3x = 90s of
+    // apparent "not responding". Return 503 immediately with retry-after so Pi
+    // can back off properly. The per-key backoff state already tells us when the
+    // earliest key recovers.
+    const backoffStateNull = getBackoffState();
+    const earliestNull = backoffStateNull.length
+      ? Math.min(...backoffStateNull.map((s) => s.remainingMs))
+      : 0;
+    const retryMsNull = Math.min(getDefaultBackoffMs(), Math.max(0, earliestNull));
+    const retrySecNull = Math.max(1, Math.ceil(retryMsNull / 1000));
+    log.warn(
+      "COMBO-RR",
+      `All RR targets filtered (no attempt, ${backoffStateNull.length} keys throttled, retry in ${retrySecNull}s) — returning 503 without wait`
+    );
+    (combo as unknown as Record<string, unknown>).__exhaustedStartMs = undefined;
+    return unavailableResponse(
+      503,
+      "All round-robin combo models unavailable; retry shortly",
+      { seconds: retrySecNull } as unknown as ComboRetryAfter,
+      `${retrySecNull}s`
+    );
+  }
+
+  const isFreeEmperoSwitching =
+    typeof lastStatus === "number" &&
+    lastStatus === 503 &&
+    typeof lastError === "string" &&
+    lastError.includes("We are switching the free endpoint");
+  if (isFreeEmperoSwitching) {
+    log.warn(
+      "COMBO-RR",
+      `Freeempero switching 503 — returning immediately without wait so Pi can /shake or switch model (was waiting ${Math.ceil(Math.min(getDefaultBackoffMs(), Math.min(...getBackoffState().map((s) => s.remainingMs))) / 1000)}s)`
+    );
+    (combo as unknown as Record<string, unknown>).__exhaustedStartMs = undefined;
+    return unavailableResponse(
+      503,
+      "We are switching the free endpoint to new models. Your work is safe; please retry shortly.",
+      { seconds: 5 } as unknown as ComboRetryAfter,
+      "5s"
+    );
+  }
+
   if (
-    !lastStatus ||
     lastStatus === 429 ||
     (typeof lastStatus === "number" && lastStatus >= 500) ||
     // WAF HTML-block 403: same transient semantics — wait + recurse instead of
     // surfacing a raw HTML page to the client (combo-hang fix).
     (typeof lastStatus === "number" && isWafHtmlBlockError(lastStatus, lastError || ""))
   ) {
-    // PATCHED 2026-07-14: when all targets exhausted on transient errors (429/5xx) or
-    // when lastStatus is null, wait and recurse into handleRoundRobinCombo instead of
-    // returning a misleading ALL_ACCOUNTS_INACTIVE 503. NVIDIA's 429/503 RPM throttles
-    // last many minutes — returning to the client is the wrong default.
+    // PATCHED 2026-07-14: when all targets exhausted on transient errors (429/5xx),
+    // wait and recurse into handleRoundRobinCombo instead of returning a misleading
+    // ALL_ACCOUNTS_INACTIVE 503. NVIDIA's 429/503 RPM throttles last many minutes —
+    // returning to the client is the wrong default.
     //
     // PATCHED 2026-07-14 (safety net): if we've been in this "all exhausted" loop for
     // more than 5 minutes continuously, the in-memory providerCooldownTracker may have
