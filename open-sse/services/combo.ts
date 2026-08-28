@@ -3358,6 +3358,23 @@ async function handleRoundRobinCombo({
           exhaustedLogLevel: "debug",
           structuredError,
         });
+        // FIX 2026-08-28: freeempero switching 503 is provider-wide maintenance, not per-key rate limit.
+        // Mark the whole provider exhausted for this request after the first hit so we don't
+        // burn 5 sequential 503s (one per freeempero key) before hitting the nvidia tier.
+        // This cuts the nvidia+empero hang from ~15s of sequential freeempero 503s to ~1s.
+        if (
+          !providerExhausted &&
+          result.status === 503 &&
+          typeof errorText === "string" &&
+          errorText.includes("We are switching the free endpoint") &&
+          provider
+        ) {
+          exhaustedProviders.add(provider);
+          log.warn(
+            "COMBO-RR",
+            `Freeempero switching — provider ${provider} exhausted for this request, skipping remaining ${provider} targets`
+          );
+        }
         // #6692: mirrors handleComboChat's exhaustion-point release above.
         releaseStickyPinOnFailure(_rrSessionSticky.messageHash, targetWithConnection.connectionId);
 
