@@ -161,13 +161,15 @@ export function supportsMaxEffortForProvider(provider: string, model: string): b
   const isOllamaCloud = provider === "ollama-cloud";
   const isKimiK3 = /kimi[-_.]?k3/i.test(model);
   const isAgentRouterGlm = provider === "agentrouter" && model.toLowerCase().includes("glm");
+  const isBaiGlm = provider === "openai-compatible-bai" && /glm/i.test(model);
   return (
     isClaude ||
     isOpencodeGoDeepSeek ||
     isOllamaCloud ||
     isKimiK3 ||
     isOpencodeZenOxAlpha ||
-    isAgentRouterGlm
+    isAgentRouterGlm ||
+    isBaiGlm
   );
 }
 

@@ -261,6 +261,9 @@ export function supportsXHighEffort(aliasOrId: string, modelId: string): boolean
   // prevented xhigh→max normalization, leaving xhigh to be rejected as
   // thinking_effort="xhigh". Force false for any kimi-k3 model id.
   if (/kimi[-_.]?k3/i.test(modelId)) return false;
+  // b.ai GLM models only support low/high/max — xhigh is rejected as
+  // "please use low, high, or max". Force false for any glm via bai.
+  if (aliasOrId === "openai-compatible-bai" && /glm/i.test(modelId)) return false;
 
   const { models: providerModels } = resolveProviderModelList(aliasOrId);
   const model = providerModels?.find((entry) => entry.id === modelId);
