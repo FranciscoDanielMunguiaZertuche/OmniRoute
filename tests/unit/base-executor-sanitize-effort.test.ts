@@ -104,6 +104,39 @@ test("sanitizeReasoningEffortForProvider: Ollama Cloud preserves max", () => {
   assert.equal(log.messages.length, 0);
 });
 
+test("sanitizeReasoningEffortForProvider: TokenRouter GLM preserves max", () => {
+  const log = makeLog();
+  const body = {
+    model: "z-ai/glm-5.3-free",
+    reasoning_effort: "max",
+    messages: [{ role: "user", content: "hi" }],
+  };
+  const result = sanitizeReasoningEffortForProvider(body, "tokenrouter", "z-ai/glm-5.3-free", log);
+  assert.equal(result, body, "TokenRouter z-ai GLM accepts max literally");
+  assert.equal(result.reasoning_effort, "max");
+  assert.equal(log.messages.length, 0);
+});
+
+test("sanitizeReasoningEffortForProvider: non-GLM TokenRouter model still normalizes max → xhigh", () => {
+  const log = makeLog();
+  const body = {
+    model: "qwen/qwen3.8-max-free",
+    reasoning_effort: "max",
+    messages: [{ role: "user", content: "hi" }],
+  };
+  const result = sanitizeReasoningEffortForProvider(
+    body,
+    "tokenrouter",
+    "qwen/qwen3.8-max-free",
+    log
+  );
+  assert.equal(result.reasoning_effort, "xhigh");
+  assert.ok(
+    log.messages.some(([tag, m]) => tag === "REASONING_SANITIZE" && /max → xhigh/.test(m)),
+    "opt-in is scoped to GLM models only"
+  );
+});
+
 test("end-to-end: Anthropic output_config.effort=max reaches Ollama Cloud as max (not xhigh)", () => {
   // Bug: the claude→openai translator previously normalized max → xhigh, and the
   // sanitizer could not recover the original intent because the carrier was already

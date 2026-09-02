@@ -161,6 +161,10 @@ export function supportsMaxEffortForProvider(provider: string, model: string): b
   const isOllamaCloud = provider === "ollama-cloud";
   const isKimiK3 = /kimi[-_.]?k3/i.test(model);
   const isAgentRouterGlm = provider === "agentrouter" && model.toLowerCase().includes("glm");
+  // TokenRouter's z-ai GLM models accept literal max (verified live:
+  // reasoning_effort=max → 200 with reasoning_tokens in usage). Without this
+  // opt-in max is normalized to xhigh, silently dropping the top tier.
+  const isTokenRouterGlm = provider === "tokenrouter" && model.toLowerCase().includes("glm");
   const isBaiGlm = provider === "openai-compatible-bai" && /glm/i.test(model);
   return (
     isClaude ||
@@ -169,6 +173,7 @@ export function supportsMaxEffortForProvider(provider: string, model: string): b
     isKimiK3 ||
     isOpencodeZenOxAlpha ||
     isAgentRouterGlm ||
+    isTokenRouterGlm ||
     isBaiGlm
   );
 }
