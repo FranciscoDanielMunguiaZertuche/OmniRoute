@@ -264,6 +264,8 @@ export function supportsXHighEffort(aliasOrId: string, modelId: string): boolean
   // b.ai GLM models only support low/high/max — xhigh is rejected as
   // "please use low, high, or max". Force false for any glm via bai.
   if (aliasOrId === "openai-compatible-bai" && /glm/i.test(modelId)) return false;
+  // OneRouter (api.unorouter.com) GLM models same contract as b.ai — low/high/max only.
+  if (aliasOrId === "openai-compatible-onerouter" && /glm/i.test(modelId)) return false;
 
   const { models: providerModels } = resolveProviderModelList(aliasOrId);
   const model = providerModels?.find((entry) => entry.id === modelId);

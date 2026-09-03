@@ -168,6 +168,7 @@ export function supportsMaxEffortForProvider(provider: string, model: string): b
   // include isTokenRouterGlm here - max will be downgraded to high.
   const isBaiGlm = provider === "openai-compatible-bai" && /glm/i.test(model);
   const isOpencodeMuseSpark = provider === "opencode" && /muse-spark|hy3/i.test(model);
+  const isOnerouterGlm = provider === "openai-compatible-onerouter" && /glm/i.test(model);
   return (
     isClaude ||
     isOpencodeGoDeepSeek ||
@@ -176,7 +177,8 @@ export function supportsMaxEffortForProvider(provider: string, model: string): b
     isOpencodeZenOxAlpha ||
     isAgentRouterGlm ||
     isBaiGlm ||
-    isOpencodeMuseSpark
+    isOpencodeMuseSpark ||
+    isOnerouterGlm
   );
 }
 
@@ -311,14 +313,16 @@ export function sanitizeReasoningEffortForProvider(
     }
     return body;
   }
-  // User wants: b.ai glm + zen muse-spark always max, tokenrouter always high, kimi-k3 high for task (high) else max
-  // So: high -> max for b.ai/zen, max -> high for tokenrouter
+  // User wants: b.ai glm + zen muse-spark + onerouter glm always max, tokenrouter always high, kimi-k3 high for task (high) else max
+  // So: high -> max for b.ai/zen/onerouter, max -> high for tokenrouter
+  // Subagent rule: xhigh for flash/muse -> max (so flash/muse use max even when subagent sends xhigh)
   const isBaiForUpgrade = provider === "openai-compatible-bai" && /glm/i.test(modelStr);
   const isZenForUpgrade = provider === "opencode" && /muse-spark|hy3/i.test(modelStr);
-  if (effortStr === "high" && (isBaiForUpgrade || isZenForUpgrade)) {
+  const isOnerouterForUpgrade = provider === "openai-compatible-onerouter" && /glm/i.test(modelStr);
+  if (effortStr === "high" && (isBaiForUpgrade || isZenForUpgrade || isOnerouterForUpgrade)) {
     log?.info?.(
       "REASONING_SANITIZE",
-      `${provider}/${modelStr}: upgraded reasoning_effort high → max (b.ai/zen always max)`
+      `${provider}/${modelStr}: upgraded reasoning_effort high → max (b.ai/zen/onerouter always max)`
     );
     return writeEffortValue(b, "max", c);
   }
@@ -328,6 +332,18 @@ export function sanitizeReasoningEffortForProvider(
       `${provider}/${modelStr}: downgraded reasoning_effort max → high (tokenrouter always high)`
     );
     return writeEffortValue(b, "high", c);
+  }
+  // Subagent fast path: xhigh for glm-5.3 flash or muse-spark should be max (max is their top tier)
+  // Large models (glm-5.3 full, kimi-k3) stay xhigh when subagent sends xhigh; flash/muse get upgraded.
+  const isBaiFlash = provider === "openai-compatible-bai" && /flash/i.test(modelStr);
+  const isOnerouterFlash = provider === "openai-compatible-onerouter" && /flash/i.test(modelStr);
+  const isFlashForXHighUpgrade = isBaiFlash || isOnerouterFlash || isZenForUpgrade;
+  if (effortStr === "xhigh" && isFlashForXHighUpgrade) {
+    log?.info?.(
+      "REASONING_SANITIZE",
+      `${provider}/${modelStr}: upgraded reasoning_effort xhigh → max (flash/muse max)`
+    );
+    return writeEffortValue(b, "max", c);
   }
 
   const supportsXHigh = supportsXHighEffort(provider, modelStr);
