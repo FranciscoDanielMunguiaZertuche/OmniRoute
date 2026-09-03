@@ -2884,15 +2884,25 @@ async function handleRoundRobinCombo({
     const target = filteredTargets[modelIndex];
     const modelStr = target.modelStr;
     const provider = target.provider;
-    // Combo-hang fix: once the fail-fast window expires, stop dispatching NEW
-    // targets — every earlier target already failed/hung, so retrying further
-    // just burns the client's patience. Return 503 so the client can retry.
+    // PATCH 2026-09-03: never surface fail-fast 503 to client for 3-agent burst.
+    // Instead wait 2s and recurse - keeps working without spammy 503.
     if (offset > 0 && Date.now() >= rrFailFastDeadline) {
       log.warn(
         "COMBO-RR",
-        `All RR targets failed within ${rrFailFastMs}ms fail-fast window (lastStatus=${lastStatus}) — returning 503`
+        `All RR targets failed within ${rrFailFastMs}ms fail-fast window (lastStatus=${lastStatus}) — waiting 2s then recursing (no 503)`
       );
-      return unavailableResponse(503, "All round-robin combo models unavailable; retry shortly");
+      await new Promise((r) => setTimeout(r, 2000));
+      return handleRoundRobinCombo({
+        body,
+        combo,
+        handleSingleModel,
+        isModelAvailable,
+        log,
+        settings,
+        allCombos,
+        signal,
+        rrFailFastDeadlineMs: Date.now() + rrFailFastMs,
+      });
     }
     const profile = await getRuntimeProviderProfile(provider);
     const semaphoreKey = `combo:${combo.name}:${target.executionKey}`;
@@ -3598,29 +3608,29 @@ async function handleRoundRobinCombo({
   }
 
   if (!lastStatus) {
-    // FIX 2026-08-28: when NO targets were attempted (all filtered by per-key backoff
-    // or provider cooldown), don't recurse and wait — that causes the nvidia+empero
-    // combo to hang for 30s (retrying every 4s) and then Pi retries 3x = 90s of
-    // apparent "not responding". Return 503 immediately with retry-after so Pi
-    // can back off properly. The per-key backoff state already tells us when the
-    // earliest key recovers.
+    // PATCH 2026-09-03: for 3-agent burst, never return 503 when all filtered.
+    // Wait for earliest backoff (max 2s) and recurse - keeps working.
     const backoffStateNull = getBackoffState();
     const earliestNull = backoffStateNull.length
       ? Math.min(...backoffStateNull.map((s) => s.remainingMs))
       : 0;
-    const retryMsNull = Math.min(getDefaultBackoffMs(), Math.max(0, earliestNull));
-    const retrySecNull = Math.max(1, Math.ceil(retryMsNull / 1000));
+    const retryMsNull = Math.min(2000, Math.max(0, earliestNull));
     log.warn(
       "COMBO-RR",
-      `All RR targets filtered (no attempt, ${backoffStateNull.length} keys throttled, retry in ${retrySecNull}s) — returning 503 without wait`
+      `All RR targets filtered (no attempt, ${backoffStateNull.length} keys throttled, waiting ${retryMsNull}ms then recursing)`
     );
-    (combo as unknown as Record<string, unknown>).__exhaustedStartMs = undefined;
-    return unavailableResponse(
-      503,
-      "All round-robin combo models unavailable; retry shortly",
-      { seconds: retrySecNull } as unknown as ComboRetryAfter,
-      `${retrySecNull}s`
-    );
+    await new Promise((r) => setTimeout(r, retryMsNull));
+    return handleRoundRobinCombo({
+      body,
+      combo,
+      handleSingleModel,
+      isModelAvailable,
+      log,
+      settings,
+      allCombos,
+      signal,
+      rrFailFastDeadlineMs: Date.now() + rrFailFastMs,
+    });
   }
 
   const isFreeEmperoSwitching =
@@ -3699,10 +3709,20 @@ async function handleRoundRobinCombo({
     if (rrRemaining <= 0) {
       log.warn(
         "COMBO-RR",
-        `All RR targets exhausted (status=${lastStatus}) past the ${rrFailFastMs}ms fail-fast window — returning 503`
+        `All RR targets exhausted past ${rrFailFastMs}ms window — waiting 2s then recursing (no 503)`
       );
-      (combo as unknown as Record<string, unknown>).__exhaustedStartMs = undefined;
-      return unavailableResponse(503, "All round-robin combo models unavailable; retry shortly");
+      await new Promise((r) => setTimeout(r, 2000));
+      return handleRoundRobinCombo({
+        body,
+        combo,
+        handleSingleModel,
+        isModelAvailable,
+        log,
+        settings,
+        allCombos,
+        signal,
+        rrFailFastDeadlineMs: Date.now() + rrFailFastMs,
+      });
     }
     waitMs = Math.min(waitMs, rrRemaining);
     log.warn("COMBO-RR", `All RR targets exhausted status=${lastStatus} — ${waitReason}`);
