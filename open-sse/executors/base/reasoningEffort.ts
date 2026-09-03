@@ -164,8 +164,10 @@ export function supportsMaxEffortForProvider(provider: string, model: string): b
   // TokenRouter's z-ai GLM models accept literal max (verified live:
   // reasoning_effort=max → 200 with reasoning_tokens in usage). Without this
   // opt-in max is normalized to xhigh, silently dropping the top tier.
-  const isTokenRouterGlm = provider === "tokenrouter" && model.toLowerCase().includes("glm");
+  // NOTE: user wants tokenrouter always high, so we intentionally DO NOT
+  // include isTokenRouterGlm here - max will be downgraded to high.
   const isBaiGlm = provider === "openai-compatible-bai" && /glm/i.test(model);
+  const isOpencodeMuseSpark = provider === "opencode" && /muse-spark|hy3/i.test(model);
   return (
     isClaude ||
     isOpencodeGoDeepSeek ||
@@ -173,9 +175,13 @@ export function supportsMaxEffortForProvider(provider: string, model: string): b
     isKimiK3 ||
     isOpencodeZenOxAlpha ||
     isAgentRouterGlm ||
-    isTokenRouterGlm ||
-    isBaiGlm
+    isBaiGlm ||
+    isOpencodeMuseSpark
   );
+}
+
+function isTokenRouterGlmForDowngrade(provider: string, model: string): boolean {
+  return provider === "tokenrouter" && model.toLowerCase().includes("glm");
 }
 
 // ── Effort carrier helpers (#7044) ──────────────────────────────────────────
@@ -305,6 +311,25 @@ export function sanitizeReasoningEffortForProvider(
     }
     return body;
   }
+  // User wants: b.ai glm + zen muse-spark always max, tokenrouter always high, kimi-k3 high for task (high) else max
+  // So: high -> max for b.ai/zen, max -> high for tokenrouter
+  const isBaiForUpgrade = provider === "openai-compatible-bai" && /glm/i.test(modelStr);
+  const isZenForUpgrade = provider === "opencode" && /muse-spark|hy3/i.test(modelStr);
+  if (effortStr === "high" && (isBaiForUpgrade || isZenForUpgrade)) {
+    log?.info?.(
+      "REASONING_SANITIZE",
+      `${provider}/${modelStr}: upgraded reasoning_effort high → max (b.ai/zen always max)`
+    );
+    return writeEffortValue(b, "max", c);
+  }
+  if (effortStr === "max" && isTokenRouterGlmForDowngrade(provider, modelStr)) {
+    log?.info?.(
+      "REASONING_SANITIZE",
+      `${provider}/${modelStr}: downgraded reasoning_effort max → high (tokenrouter always high)`
+    );
+    return writeEffortValue(b, "high", c);
+  }
+
   const supportsXHigh = supportsXHighEffort(provider, modelStr);
   const supportsMax = supportsMaxEffortForProvider(provider, modelStr);
 
