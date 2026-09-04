@@ -117,7 +117,7 @@ export const MAX_COMBO_DEPTH = 3;
 // nested-combo expansion is a real DoS/perf risk.
 export const MAX_COMBO_DEPTH_HARD_CAP = 10;
 export const MAX_FALLBACK_WAIT_MS = 5000;
-export const MAX_GLOBAL_ATTEMPTS = 30;
+export const MAX_GLOBAL_ATTEMPTS = 500;
 
 /**
  * Clamp an operator-configured combo nesting depth (config.maxComboDepth) to a
