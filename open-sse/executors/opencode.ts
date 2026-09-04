@@ -303,7 +303,11 @@ export class OpencodeExecutor extends BaseExecutor {
             userAgent:
               process.env[envUAKey]?.trim() ||
               process.env.OPENCODE_USER_AGENT?.trim() ||
-              "opencode-cli/1.0.0",
+              // Official OpenCode TUI shape (`opencode/<version>`). The upstream
+              // Console free-pool gate only serves `-free` models to this UA
+              // family; the old `opencode-cli/1.0.0` default fails the gate
+              // with 429 FreeUsageLimitError even when quota remains.
+              "opencode/1.18.16",
             client: process.env.OPENCODE_CLIENT?.trim() || "cli",
             project: process.env.OPENCODE_PROJECT?.trim() || "default",
           };
