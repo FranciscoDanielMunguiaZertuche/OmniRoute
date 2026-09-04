@@ -107,6 +107,13 @@ export const opencode_zenProvider: RegistryEntry = {
       interleavedField: "reasoning_content",
     },
     {
+      id: "muse-spark-1.3-contributor-free",
+      name: "Muse Spark 1.3 Free",
+      contextLength: 1000000,
+      supportsReasoning: true,
+      targetFormat: "openai-responses",
+    },
+    {
       id: "muse-spark-1.2-contributor-free",
       name: "Muse Spark 1.2 Free",
       contextLength: 1000000,

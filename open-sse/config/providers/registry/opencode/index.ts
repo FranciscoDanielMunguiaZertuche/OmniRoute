@@ -34,6 +34,13 @@ export const opencodeProvider: RegistryEntry = {
     { id: "nemotron-3-ultra-free", name: "Nemotron 3 Ultra Free", contextLength: 1000000 },
     { id: "north-mini-code-free", name: "North Mini Code Free", contextLength: 131000 },
     {
+      id: "muse-spark-1.3-contributor-free",
+      name: "Muse Spark 1.3 Free",
+      contextLength: 1000000,
+      supportsReasoning: true,
+      targetFormat: "openai-responses",
+    },
+    {
       id: "muse-spark-1.2-contributor-free",
       name: "Muse Spark 1.2 Free",
       contextLength: 1000000,

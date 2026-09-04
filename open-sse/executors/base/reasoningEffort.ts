@@ -335,9 +335,13 @@ export function sanitizeReasoningEffortForProvider(
   }
   // Subagent fast path: xhigh for glm-5.3 flash or muse-spark should be max (max is their top tier)
   // Large models (glm-5.3 full, kimi-k3) stay xhigh when subagent sends xhigh; flash/muse get upgraded.
+  // Exception: muse-spark-1.3 keeps xhigh as its true second-highest tier (OMP task role),
+  // only main (max) runs at max.
+  const isMuseSpark13 = /muse-spark-1\.3/i.test(modelStr);
   const isBaiFlash = provider === "openai-compatible-bai" && /flash/i.test(modelStr);
   const isOnerouterFlash = provider === "openai-compatible-onerouter" && /flash/i.test(modelStr);
-  const isFlashForXHighUpgrade = isBaiFlash || isOnerouterFlash || isZenForUpgrade;
+  const isFlashForXHighUpgrade =
+    isBaiFlash || isOnerouterFlash || (isZenForUpgrade && !isMuseSpark13);
   if (effortStr === "xhigh" && isFlashForXHighUpgrade) {
     log?.info?.(
       "REASONING_SANITIZE",
