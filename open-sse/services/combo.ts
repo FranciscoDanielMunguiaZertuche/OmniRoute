@@ -2428,7 +2428,11 @@ export async function handleComboChat({
         (combo as unknown as Record<string, unknown>).__exhaustedStartMs = undefined;
       }
 
-      const status = lastStatus;
+      // Zero-attempt guard (breaker-open skip path): lastStatus can be undefined/0
+      // when every target was skipped before dispatch — sanitize to a valid
+      // HTTP status so Response construction never throws RangeError.
+      const status =
+        typeof lastStatus === "number" && lastStatus >= 200 && lastStatus <= 599 ? lastStatus : 503;
       // Build aggregated error message with per-model failure details for diagnostics.
       const comboErrorSummary =
         comboErrors.length > 0
@@ -3743,7 +3747,11 @@ async function handleRoundRobinCombo({
     (combo as unknown as Record<string, unknown>).__exhaustedStartMs = undefined;
   }
 
-  const status = lastStatus;
+  // Zero-attempt guard (breaker-open skip path): lastStatus can be undefined/0
+  // when every target was skipped before dispatch — sanitize to a valid
+  // HTTP status so Response construction never throws RangeError.
+  const status =
+    typeof lastStatus === "number" && lastStatus >= 200 && lastStatus <= 599 ? lastStatus : 503;
   // Never surface a raw WAF HTML page to the client; replace it with a clean message.
   const msg =
     typeof lastStatus === "number" && isWafHtmlBlockError(lastStatus, lastError || "")
