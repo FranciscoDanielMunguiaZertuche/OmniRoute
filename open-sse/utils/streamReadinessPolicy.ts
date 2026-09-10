@@ -24,6 +24,24 @@ const TOOL_HEAVY_THRESHOLD = 15;
 const LARGE_CHAR_THRESHOLD = 250_000;
 const VERY_LARGE_CHAR_THRESHOLD = 750_000;
 
+// Free-tier multiplexers that ping-stall instead of 429ing when their
+// per-account rate budget is exhausted (observed 2026-09-10: onerouter
+// glm-5.3:free opens SSE and emits only pings for 80s+ under load, burning
+// the full readiness window per lane before the combo can fail over). A
+// healthy lane emits its first delta in seconds, so cap the window — fail
+// fast to the next account instead of waiting out a stall.
+const PING_STALL_FAST_FAIL_MS = 30_000;
+const PING_STALL_PRONE_FREE_TIER_PROVIDERS: ReadonlySet<string> = new Set([
+  "openai-compatible-onerouter",
+]);
+
+function isPingStallProneFreeTier(provider?: string | null, model?: string | null): boolean {
+  if (!provider || !PING_STALL_PRONE_FREE_TIER_PROVIDERS.has(provider.toLowerCase())) {
+    return false;
+  }
+  return (model || "").toLowerCase().endsWith(":free");
+}
+
 function countArrayField(body: StreamReadinessBody, field: "input" | "messages" | "tools"): number {
   const value = body?.[field];
   return Array.isArray(value) ? value.length : 0;
@@ -160,6 +178,14 @@ export function resolveStreamReadinessTimeout(
   if (isClaudeFormatReasoningProvider(input.provider) && !codexHighReasoning) {
     timeoutMs += 30_000;
     reasons.push("claude_format_heavy_reasoning");
+  }
+
+  // Fast-fail ping-stalling free tiers (see above): a stalled lane must not
+  // consume the full 80s base when the next account would answer in seconds.
+  // Applied after all bumps so it wins over any extension.
+  if (isPingStallProneFreeTier(input.provider, input.model)) {
+    timeoutMs = Math.min(timeoutMs, PING_STALL_FAST_FAIL_MS);
+    reasons.push("free_tier_ping_stall_fast_fail");
   }
 
   timeoutMs = Math.min(timeoutMs, maxTimeoutMs);

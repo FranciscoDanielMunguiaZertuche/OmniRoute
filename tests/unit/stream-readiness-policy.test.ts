@@ -249,3 +249,56 @@ test("treats unknown provider names as non-Claude-format (no false positives)", 
   assert.equal(result.timeoutMs, 80_000);
   assert.ok(!result.reasons.includes("claude_format_heavy_reasoning"));
 });
+
+test("fast-fails ping-stalling free tiers (onerouter glm-5.3:free) at 30s", () => {
+  // Observed 2026-09-10: onerouter free lanes open SSE and emit only pings
+  // for 80s+ under per-account rate pressure instead of 429ing. Each stalled
+  // lane burned the full 80s base before failover; cap it so the combo moves
+  // to the next account while a healthy lane answers in seconds.
+  const result = resolveStreamReadinessTimeout({
+    baseTimeoutMs: 80_000,
+    provider: "openai-compatible-onerouter",
+    model: "glm-5.3:free",
+    body: { messages: items(3), tools: tools(2) },
+  });
+
+  assert.equal(result.timeoutMs, 30_000);
+  assert.ok(result.reasons.includes("free_tier_ping_stall_fast_fail"));
+});
+
+test("fast-fail wins over history/payload bumps on ping-stall-prone free tiers", () => {
+  const result = resolveStreamReadinessTimeout({
+    baseTimeoutMs: 80_000,
+    provider: "openai-compatible-onerouter",
+    model: "glm-5.3:free",
+    body: { messages: items(500), tools: tools(20), instructions: "x".repeat(800_000) },
+  });
+
+  assert.equal(result.timeoutMs, 30_000);
+  assert.ok(result.reasons.includes("free_tier_ping_stall_fast_fail"));
+  assert.ok(result.reasons.includes("very_large_history"));
+});
+
+test("does NOT fast-fail paid models on the same multiplexer", () => {
+  const result = resolveStreamReadinessTimeout({
+    baseTimeoutMs: 80_000,
+    provider: "openai-compatible-onerouter",
+    model: "glm-5.3",
+    body: { messages: items(3), tools: tools(2) },
+  });
+
+  assert.equal(result.timeoutMs, 80_000);
+  assert.ok(!result.reasons.includes("free_tier_ping_stall_fast_fail"));
+});
+
+test("does NOT fast-fail other providers' free models", () => {
+  const result = resolveStreamReadinessTimeout({
+    baseTimeoutMs: 80_000,
+    provider: "openai-compatible-kira",
+    model: "glm-5.3-free",
+    body: { messages: items(3), tools: tools(2) },
+  });
+
+  assert.equal(result.timeoutMs, 80_000);
+  assert.ok(!result.reasons.includes("free_tier_ping_stall_fast_fail"));
+});
