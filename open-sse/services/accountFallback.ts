@@ -118,6 +118,18 @@ function toJsonRecord(value: unknown): JsonRecord {
 // prevent infinite combo retries (Issue #3200).
 const PROVIDER_FAILURE_ERROR_CODES = new Set([408, 429, 500, 502, 503, 504]);
 
+// Decoy-429 keyless pools: quota is strictly per upstream account, never
+// provider-wide. Each OmniRoute connection is a different upstream account
+// (different egress IP), and the upstream sends decoy 429s ("Rate limit
+// exceeded") on one account while siblings still have quota. Shared by the
+// combo in-request skip policy (targetExhaustion.ts) and the synthetic
+// quota-lockout cap below.
+export const KEYLESS_DECOY_POOL_PROVIDERS: ReadonlySet<string> = new Set(["opencode"]);
+// Cap for SYNTHETIC (non-upstream-signalled) quota lockouts on decoy pools:
+// 5 minutes keeps the pool retrying instead of parking an account for hours
+// on a per-minute decoy throttle.
+export const KEYLESS_DECOY_MAX_SYNTHETIC_LOCKOUT_MS = 5 * 60 * 1000;
+
 // Per-connection failure deduplication: prevents rapid-fire failures from the
 // same connection from counting multiple times toward the provider breaker.
 const CONNECTION_FAILURE_DEDUP_MS = 5000;
@@ -614,6 +626,22 @@ export function recordModelLockoutFailure(
   // Use exactCooldownMs to bypass exponential backoff, ensuring precise lock until midnight
   if (reason === "quota_exhausted" && typeof options.exactCooldownMs !== "number") {
     options = { ...options, exactCooldownMs: getMsUntilTomorrow() };
+  }
+  // Decoy-429 keyless pools (per-account free tiers): a text/header-classified
+  // quota signal is frequently a per-minute decoy throttle, not real exhaustion.
+  // Cap the SYNTHETIC midnight default so one decoy can't park the account for
+  // hours. Explicit upstream resets (Retry-After / parsed reset countdowns)
+  // bypass this branch entirely and are always honored exactly.
+  if (
+    reason === "quota_exhausted" &&
+    typeof options.exactCooldownMs === "number" &&
+    !options.exactCooldownIsUpstreamReset &&
+    KEYLESS_DECOY_POOL_PROVIDERS.has(provider.toLowerCase())
+  ) {
+    options = {
+      ...options,
+      exactCooldownMs: Math.min(options.exactCooldownMs, KEYLESS_DECOY_MAX_SYNTHETIC_LOCKOUT_MS),
+    };
   }
 
   const resetAfterMs = getFailureWindowMs(profile);

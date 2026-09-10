@@ -88,6 +88,13 @@ export function applyComboTargetExhaustion(
   }
 
   // #1731: full provider quota exhausted → skip remaining same-provider targets this request.
+  // NOTE: keyless decoy pools (see KEYLESS_DECOY_POOL_PROVIDERS in
+  // accountFallback.ts) never reach the provider-skip below: their registry
+  // entries set passthroughModels, so hasPerModelQuota() already returns true
+  // and isProviderQuotaExhausted() is false — sibling accounts stay eligible
+  // in-request by construction. Cross-request persistence for those pools is
+  // handled by the synthetic-lockout cap in recordModelLockoutFailure plus the
+  // provider-breaker exemption in shouldRecordProviderBreakerFailure.
   const providerExhausted = isProviderQuotaExhausted(provider, opts);
   if (providerExhausted) {
     markProviderQuotaExhaustion(provider as string, opts);

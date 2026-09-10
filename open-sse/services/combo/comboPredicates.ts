@@ -10,7 +10,11 @@ import { errorResponse } from "../../utils/error.ts";
 import { parseModel } from "../model.ts";
 import { isSelfInflictedUpstreamTimeout } from "../../handlers/chatCore/cooldownClassification.ts";
 import { isLocalStreamLifecycleError } from "@/shared/utils/circuitBreaker";
-import { CONTEXT_OVERFLOW_PATTERNS, MODEL_ACCESS_DENIED_PATTERNS } from "../accountFallback.ts";
+import {
+  CONTEXT_OVERFLOW_PATTERNS,
+  KEYLESS_DECOY_POOL_PROVIDERS,
+  MODEL_ACCESS_DENIED_PATTERNS,
+} from "../accountFallback.ts";
 import { isResourceNotFoundResponse } from "../errorClassifier.ts";
 import type { ResolvedComboTarget } from "./types.ts";
 
@@ -204,7 +208,21 @@ export function shouldRecordProviderBreakerFailure(args: {
   /** #8376: transport-level "proxy unreachable" signal — overrides the `sameProviderNext`
    * exemption only; every other AND-term still gates the trip. */
   isProxyUnreachable?: boolean;
+  /** Combo target's provider — decoy-429 keyless pools (KEYLESS_DECOY_POOL_PROVIDERS)
+   * never trip the whole-provider breaker (see below). */
+  provider?: string | null;
 }): boolean {
+  // Decoy-pool exemption: quota on these pools is strictly per upstream account
+  // (one OmniRoute connection = one account = one egress IP), and the upstream
+  // sends decoy 429s plus tarpit hangs on one account while siblings are fine.
+  // A whole-provider trip would silence all 8 accounts because of one bad
+  // apple — per-connection benching (targetTimeoutRunner) and cooldowns already
+  // isolate the sick account, so the provider breaker only destroys healthy
+  // capacity here. 429s were already excluded globally; this covers the
+  // tarpit-timeout (408/504) and 5xx trips.
+  if (args.provider && KEYLESS_DECOY_POOL_PROVIDERS.has(args.provider.toLowerCase())) {
+    return false;
+  }
   return (
     !args.isStreamReadinessFailure &&
     PROVIDER_BREAKER_FAILURE_STATUSES.has(args.status) &&

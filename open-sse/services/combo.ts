@@ -2103,6 +2103,7 @@ export async function handleComboChat({
               requestScopedFailure: scopedFailure,
               error: errorText,
               isProxyUnreachable: structuredError?.code === "proxy_unreachable",
+              provider,
             })
           ) {
             recordProviderFailure(provider, log, targetWithConnection.connectionId, profile);
