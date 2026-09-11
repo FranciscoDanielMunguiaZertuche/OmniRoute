@@ -1,3 +1,4 @@
+import { KEYLESS_DECOY_POOL_PROVIDERS } from "@omniroute/open-sse/services/accountFallback.ts";
 import { isLocalStreamLifecycleError } from "../../shared/utils/circuitBreaker";
 import { isRequestScopedUpstreamFailure } from "./comboFailureLogging";
 
@@ -7,11 +8,19 @@ export const PROVIDER_BREAKER_FAILURE_STATUSES = new Set([408, 500, 502, 503, 50
 // inside `breaker.execute()`), so it needs its own `isLocalStreamLifecycleError` guard —
 // otherwise a client abort (502 default, error='request_signal_aborted') trips the
 // provider-wide breaker. Pure predicate, unit-testable without the full request path.
+// Decoy-pool exemption (mirrors combo shouldRecordProviderBreakerFailure): quota on
+// these keyless pools is strictly per upstream account, so a whole-provider trip
+// silences healthy sibling accounts because of one bad apple. Per-connection
+// cooldowns already isolate the sick account.
 export function shouldTripProviderBreakerForResult(
   result: { status: number; errorCode?: string | null; errorType?: string | null; error?: unknown },
   isCombo: boolean,
-  forceLiveComboTest: boolean
+  forceLiveComboTest: boolean,
+  provider?: string | null
 ): boolean {
+  if (provider && KEYLESS_DECOY_POOL_PROVIDERS.has(provider.toLowerCase())) {
+    return false;
+  }
   return (
     !forceLiveComboTest &&
     !isCombo &&

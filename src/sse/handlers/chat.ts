@@ -1835,7 +1835,7 @@ async function handleSingleModelChat(
         continue;
       }
 
-      if (shouldTripProviderBreakerForResult(result, isCombo, forceLiveComboTest)) {
+      if (shouldTripProviderBreakerForResult(result, isCombo, forceLiveComboTest, provider)) {
         breaker._onFailure();
       }
 

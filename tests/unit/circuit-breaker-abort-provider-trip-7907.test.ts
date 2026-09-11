@@ -82,3 +82,46 @@ test("combo.ts handleComboChat path: genuine upstream failures still trip the br
     true
   );
 });
+
+test("chat.ts single-model path: decoy-pool providers never trip the breaker (any 5xx)", () => {
+  for (const status of [408, 500, 502, 503, 504]) {
+    assert.equal(
+      shouldTripProviderBreakerForResult(
+        { status, error: "upstream failure" },
+        false,
+        false,
+        "opencode"
+      ),
+      false
+    );
+    assert.equal(
+      shouldTripProviderBreakerForResult(
+        { status, error: "upstream failure" },
+        false,
+        false,
+        "OpenCode"
+      ),
+      false
+    );
+  }
+});
+
+test("chat.ts single-model path: non-decoy providers still trip on 5xx, unknown provider unchanged", () => {
+  assert.equal(
+    shouldTripProviderBreakerForResult(
+      { status: 502, error: "Bad Gateway" },
+      false,
+      false,
+      "opencode-zen"
+    ),
+    true
+  );
+  assert.equal(
+    shouldTripProviderBreakerForResult({ status: 502, error: "Bad Gateway" }, false, false),
+    true
+  );
+  assert.equal(
+    shouldTripProviderBreakerForResult({ status: 502, error: "Bad Gateway" }, false, false, null),
+    true
+  );
+});
