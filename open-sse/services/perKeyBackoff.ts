@@ -57,6 +57,29 @@ const PROVIDER_429_BACKOFF_MS: Record<string, number> = {
   "opencode-zen": 5 * 60 * 1000,
 };
 
+/**
+ * muse-spark 429 tolerance (fleet max-only policy).
+ *
+ * muse-spark (keyless `opencode` + keyed `opencode-zen`) lanes emit single
+ * decoy/transient 429s even while the account still has quota — verified live
+ * by repetition probing (a lone 429 breaks on retry; only 3+ consecutive 429s
+ * inside ~20s from the same account mean the window is truly shut). Benching a
+ * lane on the first 429 therefore sidelines healthy quota and pushes combo
+ * walks onto GLM for no reason.
+ *
+ * So for these two providers a 429 only benches after MUSE_429_THRESHOLD
+ * consecutive 429s inside MUSE_429_WINDOW_MS; 1–2 stray 429s leave the key
+ * available so fill-first keeps walking 1.3 instead of failing over to GLM.
+ * Any 200 resets the count (recordKeySuccess). 5xx/524/WAF paths (which pass
+ * no provider string) bench immediately, unchanged.
+ */
+const MUSE_429_TOLERANCE_PROVIDERS = new Set(["opencode", "opencode-zen"]);
+const MUSE_429_WINDOW_MS = 20 * 1000;
+const MUSE_429_THRESHOLD = 3;
+
+/** Sliding window of recent 429 timestamps per connection (tolerance tracking). */
+const recent429TimestampsMs: Map<string, number[]> = new Map();
+
 export function resolve429BackoffMs(provider?: string): number {
   if (provider && PROVIDER_429_BACKOFF_MS[provider]) return PROVIDER_429_BACKOFF_MS[provider];
   return BACKOFF_MS_DEFAULT;
@@ -100,6 +123,23 @@ export function recordKeyBackoff(
 ): void {
   if (!connectionId) return;
   const now = getNowMs();
+  // muse-spark 429 tolerance: 1–2 stray 429s inside the window leave the key
+  // available; only the 3rd consecutive 429 benches it.
+  if (
+    typeof providerOrBackoffMs === "string" &&
+    MUSE_429_TOLERANCE_PROVIDERS.has(providerOrBackoffMs)
+  ) {
+    const recent = (recent429TimestampsMs.get(connectionId) ?? []).filter(
+      (ts) => now - ts <= MUSE_429_WINDOW_MS
+    );
+    recent.push(now);
+    if (recent.length < MUSE_429_THRESHOLD) {
+      recent429TimestampsMs.set(connectionId, recent);
+      return;
+    }
+    // Threshold met: bench with the provider's fixed window and start fresh.
+    recent429TimestampsMs.delete(connectionId);
+  }
   const existing = state.get(connectionId);
   const prevFailures = existing?.consecutiveFailures ?? 0;
   const backoffMs =
@@ -150,6 +190,8 @@ export function recordKeyTimeout(connectionId: string): void {
 export function recordKeySuccess(connectionId: string): void {
   if (!connectionId) return;
   state.delete(connectionId);
+  // A success breaks consecutiveness: stray-429 tolerance starts over.
+  recent429TimestampsMs.delete(connectionId);
 }
 
 export function isKeyAvailable(connectionId: string): boolean {
@@ -197,6 +239,7 @@ export function getBackoffState(): Array<{
 
 export function clearAllBackoffs(): void {
   state.clear();
+  recent429TimestampsMs.clear();
 }
 
 export function getDefaultBackoffMs(provider?: string): number {

@@ -2245,7 +2245,8 @@ export async function handleComboChat({
             recordProviderCooldown(
               provider,
               targetWithConnection.connectionId ?? undefined,
-              resilienceSettings
+              resilienceSettings,
+              { status: result.status }
             );
           }
 
