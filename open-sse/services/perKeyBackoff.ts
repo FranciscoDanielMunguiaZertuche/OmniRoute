@@ -45,16 +45,20 @@ const BACKOFF_MS_DEFAULT = 60 * 1000;
  *    seconds and intermittently succeed mid-storm. 10s lets the combo retry each
  *    key ~6×/min to catch a 200 without hammering a saturated host (8 keys × 6 =
  *    48/min, well under typical NIM per-key RPM aggregate).
- *  - opencode-zen: free-tier quota storms last hours (recovers ~UTC midnight).
- *    60s × 8 keys = 480 wasted attempts/hr against a dead quota; 300s drops it
- *    to 96/hr and still rediscovers the provider within 5 min of recovery.
+ *  - opencode-zen: true exhaustion is now gated by the 3-in-20s tolerance
+ *    above, so a bench means the window is genuinely shut — and measured
+ *    429→200 recoveries show 52% reopen within 120s, 79% within 300s.
+ *    Re-probing every 120s rediscovers recovery ~2.5x sooner than the old
+ *    300s at modest cost (8 keys × 30/hr, each fast-failing ~400ms while
+ *    truly out ≈ 96s/hr burn). 2026-09-11 retune.
+ *  - opencode (keyless): 60s unchanged — 36% of recoveries land inside it.
  *
  * Only 429 uses this map (see combo.ts call site — 5xx/524/WAF keep the 60s
  * default; 524 hang-escalation via recordKeyTimeout is untouched).
  */
 const PROVIDER_429_BACKOFF_MS: Record<string, number> = {
   nvidia: 10 * 1000,
-  "opencode-zen": 5 * 60 * 1000,
+  "opencode-zen": 2 * 60 * 1000,
 };
 
 /**
