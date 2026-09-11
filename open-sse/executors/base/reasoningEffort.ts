@@ -168,6 +168,10 @@ export function supportsMaxEffortForProvider(provider: string, model: string): b
   // include isTokenRouterGlm here - max will be downgraded to high.
   const isBaiGlm = provider === "openai-compatible-bai" && /glm/i.test(model);
   const isOpencodeMuseSpark = provider === "opencode" && /muse-spark|hy3/i.test(model);
+  // Keyed Zen terminates at the same Zen backend as keyless, whose gateway
+  // validator explicitly accepts literal max (upstream 400 lists max as valid),
+  // so keyed muse-spark gets the same native-max contract as keyless.
+  const isOpencodeZenMuseSpark = provider === "opencode-zen" && /muse-spark|hy3/i.test(model);
   const isOnerouterGlm = provider === "openai-compatible-onerouter" && /glm/i.test(model);
   return (
     isClaude ||
@@ -178,6 +182,7 @@ export function supportsMaxEffortForProvider(provider: string, model: string): b
     isAgentRouterGlm ||
     isBaiGlm ||
     isOpencodeMuseSpark ||
+    isOpencodeZenMuseSpark ||
     isOnerouterGlm
   );
 }
