@@ -162,10 +162,11 @@ export function supportsMaxEffortForProvider(provider: string, model: string): b
   const isKimiK3 = /kimi[-_.]?k3/i.test(model);
   const isAgentRouterGlm = provider === "agentrouter" && model.toLowerCase().includes("glm");
   // TokenRouter's z-ai GLM models accept literal max (verified live:
-  // reasoning_effort=max → 200 with reasoning_tokens in usage). Without this
-  // opt-in max is normalized to xhigh, silently dropping the top tier.
-  // NOTE: user wants tokenrouter always high, so we intentionally DO NOT
-  // include isTokenRouterGlm here - max will be downgraded to high.
+  // reasoning_effort=max → 200 with reasoning_tokens in usage).
+  // KiraAI's glm-5.3-free accepts literal max (verified live 2026-09-11:
+  // reasoning_effort=max → 200 with reasoning_content in 1.86s).
+  // Fleet policy is max-only (muse-spark-1.3 max, else glm-5.3 max — never
+  // xhigh), so both ride the same native-max contract as b.ai/onerouter.
   const isBaiGlm = provider === "openai-compatible-bai" && /glm/i.test(model);
   const isOpencodeMuseSpark = provider === "opencode" && /muse-spark|hy3/i.test(model);
   // Keyed Zen terminates at the same Zen backend as keyless, whose gateway
@@ -173,6 +174,8 @@ export function supportsMaxEffortForProvider(provider: string, model: string): b
   // so keyed muse-spark gets the same native-max contract as keyless.
   const isOpencodeZenMuseSpark = provider === "opencode-zen" && /muse-spark|hy3/i.test(model);
   const isOnerouterGlm = provider === "openai-compatible-onerouter" && /glm/i.test(model);
+  const isKiraGlm = provider === "openai-compatible-kira" && /glm/i.test(model);
+  const isTokenRouterGlm = provider === "tokenrouter" && model.toLowerCase().includes("glm");
   return (
     isClaude ||
     isOpencodeGoDeepSeek ||
@@ -183,12 +186,10 @@ export function supportsMaxEffortForProvider(provider: string, model: string): b
     isBaiGlm ||
     isOpencodeMuseSpark ||
     isOpencodeZenMuseSpark ||
-    isOnerouterGlm
+    isOnerouterGlm ||
+    isKiraGlm ||
+    isTokenRouterGlm
   );
-}
-
-function isTokenRouterGlmForDowngrade(provider: string, model: string): boolean {
-  return provider === "tokenrouter" && model.toLowerCase().includes("glm");
 }
 
 // ── Effort carrier helpers (#7044) ──────────────────────────────────────────
@@ -318,25 +319,31 @@ export function sanitizeReasoningEffortForProvider(
     }
     return body;
   }
-  // User wants: b.ai glm + zen muse-spark + onerouter glm always max, tokenrouter always high, kimi-k3 high for task (high) else max
-  // So: high -> max for b.ai/zen/onerouter, max -> high for tokenrouter
+  // Fleet policy is max-only: b.ai glm + zen muse-spark + onerouter glm +
+  // kira glm + tokenrouter glm always max (muse-spark-1.3 max, else glm-5.3
+  // max — never xhigh). High is upgraded to max on these lanes so every
+  // shape of the request ends at the top tier.
   // Subagent rule: xhigh for flash/muse -> max (so flash/muse use max even when subagent sends xhigh)
   const isBaiForUpgrade = provider === "openai-compatible-bai" && /glm/i.test(modelStr);
-  const isZenForUpgrade = provider === "opencode" && /muse-spark|hy3/i.test(modelStr);
+  const isZenForUpgrade =
+    (provider === "opencode" || provider === "opencode-zen") && /muse-spark|hy3/i.test(modelStr);
   const isOnerouterForUpgrade = provider === "openai-compatible-onerouter" && /glm/i.test(modelStr);
-  if (effortStr === "high" && (isBaiForUpgrade || isZenForUpgrade || isOnerouterForUpgrade)) {
+  const isKiraForUpgrade = provider === "openai-compatible-kira" && /glm/i.test(modelStr);
+  const isTokenRouterForUpgrade =
+    provider === "tokenrouter" && modelStr.toLowerCase().includes("glm");
+  if (
+    effortStr === "high" &&
+    (isBaiForUpgrade ||
+      isZenForUpgrade ||
+      isOnerouterForUpgrade ||
+      isKiraForUpgrade ||
+      isTokenRouterForUpgrade)
+  ) {
     log?.info?.(
       "REASONING_SANITIZE",
-      `${provider}/${modelStr}: upgraded reasoning_effort high → max (b.ai/zen/onerouter always max)`
+      `${provider}/${modelStr}: upgraded reasoning_effort high → max (fleet max-only)`
     );
     return writeEffortValue(b, "max", c);
-  }
-  if (effortStr === "max" && isTokenRouterGlmForDowngrade(provider, modelStr)) {
-    log?.info?.(
-      "REASONING_SANITIZE",
-      `${provider}/${modelStr}: downgraded reasoning_effort max → high (tokenrouter always high)`
-    );
-    return writeEffortValue(b, "high", c);
   }
   // Subagent fast path: xhigh for glm-5.3 flash or muse-spark should be max (max is their top tier)
   // Large models (glm-5.3 full, kimi-k3) stay xhigh when subagent sends xhigh; flash/muse get upgraded.
