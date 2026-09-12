@@ -1188,11 +1188,22 @@ export async function getProviderCredentials(
           };
         }
       }
-      const syntheticFallback = await maybeSyntheticNoAuthFallback(
-        resolvedId,
-        excludedConnectionIds
-      );
-      if (syntheticFallback) return syntheticFallback;
+      // Fleet fix: the caller pinned a specific lane (forcedConnectionId) whose
+      // connection is not in this provider's pool — e.g. a keyless combo member
+      // resolved under the zen alias. Advancing beats a 5-9s doomed synthetic
+      // attempt per member (~35s/walk). Unpinned requests keep synthetic
+      // gap-filling below.
+      const pinnedForEmptyPool =
+        (typeof forcedConnectionId === "string" && forcedConnectionId.length > 0) ||
+        (typeof options.forcedConnectionId === "string" &&
+          options.forcedConnectionId.trim().length > 0);
+      if (!pinnedForEmptyPool) {
+        const syntheticFallback = await maybeSyntheticNoAuthFallback(
+          resolvedId,
+          excludedConnectionIds
+        );
+        if (syntheticFallback) return syntheticFallback;
+      }
       log.warn("AUTH", `No credentials for ${provider}`);
       return null;
     }
