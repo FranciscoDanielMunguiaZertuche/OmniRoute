@@ -49,3 +49,23 @@ test("spec-compliant providers stay capped (no blanket opt-in)", () => {
   assert.equal(supportsMaxEffortForProvider("openai", "gpt-5.5"), false);
   assert.equal(supportsMaxEffortForProvider("opencode-zen", "gpt-5.5"), false);
 });
+
+test("agentrouter GPT-6 Astra steps max down to high (operator-ordered lane)", () => {
+  const out = sanitizeReasoningEffortForProvider(
+    { model: "gpt-6-astra", reasoning_effort: "max" },
+    "agentrouter",
+    "gpt-6-astra",
+    null
+  ) as Record<string, unknown>;
+  assert.equal(out["reasoning_effort"], "high");
+});
+
+test("agentrouter GPT keeps an explicit high (never xhigh)", () => {
+  const out = sanitizeReasoningEffortForProvider(
+    { model: "gpt-6-astra", reasoning_effort: "high" },
+    "agentrouter",
+    "gpt-6-astra",
+    null
+  ) as Record<string, unknown>;
+  assert.equal(out["reasoning_effort"], "high");
+});

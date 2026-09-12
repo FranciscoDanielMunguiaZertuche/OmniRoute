@@ -331,6 +331,17 @@ export function sanitizeReasoningEffortForProvider(
   const isKiraForUpgrade = provider === "openai-compatible-kira" && /glm/i.test(modelStr);
   const isTokenRouterForUpgrade =
     provider === "tokenrouter" && modelStr.toLowerCase().includes("glm");
+  // AgentRouter GPT lanes run at HIGH by operator order (fleet slot: first
+  // fallback after the fastest GLM block). A role max arriving here must step
+  // down to high, never up to xhigh.
+  const isAgentRouterGptForHigh = provider === "agentrouter" && /gpt/i.test(modelStr);
+  if (effortStr === "max" && isAgentRouterGptForHigh) {
+    log?.info?.(
+      "REASONING_SANITIZE",
+      `${provider}/${modelStr}: downgraded reasoning_effort max → high (agentrouter GPT runs high)`
+    );
+    return writeEffortValue(b, "high", c);
+  }
   if (
     effortStr === "high" &&
     (isBaiForUpgrade ||
