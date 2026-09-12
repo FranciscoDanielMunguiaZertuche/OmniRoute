@@ -1022,17 +1022,28 @@ export async function getProviderCredentials(
     ];
     if (providerMaps.some((map) => map[resolvedId]?.noAuth)) {
       if (await isNoAuthProviderBlockedBySettings(resolvedId)) return null;
-      // #3061: there is only one synthetic "noauth" connection for a no-auth
-      // provider. If the caller already tried and excluded it (account-fallback
-      // after a persistent upstream error), do NOT hand it back — that would let
-      // the chat fallback loop re-select "noauth" forever (no real DB row → no
-      // cooldown to brake it), writing logs every iteration until the disk fills.
-      // Returning null here lets the handler stop after a single attempt.
-      const excludedForNoAuth = normalizeExcludedConnectionIds(
-        excludeConnectionId,
-        options.excludeConnectionIds
-      );
-      return await maybeSyntheticNoAuthFallback(resolvedId, excludedForNoAuth);
+      // Fleet fix: a combo member pins a real (keyless) connection via
+      // forcedConnectionId. Honor it through normal pool resolution below
+      // instead of burning 5-9s on a doomed synthetic attempt per member —
+      // a benched named lane then fails fast (allRateLimited/null) and the
+      // walk advances in milliseconds. Synthetic stays for unpinned
+      // (direct) requests, preserving anonymous gap-filling.
+      const forcedForNoAuth =
+        typeof options.forcedConnectionId === "string" &&
+        options.forcedConnectionId.trim().length > 0;
+      if (!forcedForNoAuth) {
+        // #3061: there is only one synthetic "noauth" connection for a no-auth
+        // provider. If the caller already tried and excluded it (account-fallback
+        // after a persistent upstream error), do NOT hand it back — that would let
+        // the chat fallback loop re-select "noauth" forever (no real DB row → no
+        // cooldown to brake it), writing logs every iteration until the disk fills.
+        // Returning null here lets the handler stop after a single attempt.
+        const excludedForNoAuth = normalizeExcludedConnectionIds(
+          excludeConnectionId,
+          options.excludeConnectionIds
+        );
+        return await maybeSyntheticNoAuthFallback(resolvedId, excludedForNoAuth);
+      }
     }
 
     const allowSuppressedConnections = options.allowSuppressedConnections === true;
